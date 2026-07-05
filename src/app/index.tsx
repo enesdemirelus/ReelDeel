@@ -1,5 +1,6 @@
 import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native";
@@ -56,13 +57,16 @@ function SpringButton({
 
 export default function Index() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
 
   const onCreateRoom = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push("/create");
   };
 
   const onJoinRoom = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push("/join");
   };
 
   return (
@@ -81,7 +85,7 @@ export default function Index() {
           >
             Reel Duel
           </Text>
-          <Text style={styles.tagline}>Pick the movie. Together.</Text>
+          <Text style={styles.tagline}>Pick the movie. Duel it out.</Text>
         </View>
 
         <View style={styles.deckWrap} pointerEvents="box-none">
@@ -135,20 +139,20 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   title: {
-    fontSize: 58,
-    lineHeight: 64,
-    fontWeight: "800",
+    fontFamily: "Unbounded_800ExtraBold",
+    fontSize: 46,
+    lineHeight: 56,
     color: "#FFFFFF",
     textAlign: "center",
     letterSpacing: -1,
-    textShadowColor: "rgba(0,0,0,0.30)",
+    textShadowColor: "rgba(0,0,0,0.35)",
     textShadowOffset: { width: 0, height: 3 },
-    textShadowRadius: 10,
+    textShadowRadius: 12,
   },
   tagline: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "rgba(255,255,255,0.90)",
+    fontFamily: "Unbounded_500Medium",
+    fontSize: 14,
+    color: "rgba(255,255,255,0.82)",
     letterSpacing: 0.2,
   },
   cardWrap: {
@@ -176,10 +180,10 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   signupLabel: {
+    fontFamily: "Unbounded_700Bold",
     color: "#000000",
-    fontSize: 17,
-    fontWeight: "700",
-    letterSpacing: 0.2,
+    fontSize: 15,
+    letterSpacing: 0.1,
   },
   divider: {
     flexDirection: "row",
@@ -194,9 +198,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.28)",
   },
   dividerLabel: {
+    fontFamily: "Unbounded_600SemiBold",
     color: "rgba(255,255,255,0.55)",
-    fontSize: 12,
-    fontWeight: "600",
+    fontSize: 10,
     textTransform: "uppercase",
     letterSpacing: 1.2,
   },
@@ -209,8 +213,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   ghostLabel: {
+    fontFamily: "Unbounded_600SemiBold",
     color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 14,
+    letterSpacing: 0.1,
   },
 });
