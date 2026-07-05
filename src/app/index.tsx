@@ -1,39 +1,78 @@
 import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import { StatusBar } from "expo-status-bar";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { type ReactNode } from "react";
+import { Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native";
+import Animated, {
+  FadeInDown,
+  interpolate,
+  type SharedValue,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { LavaBackdrop } from "@/components/lava-backdrop";
 import { PosterStack } from "@/components/poster-stack";
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+function springTo(
+  sv: SharedValue<number>,
+  to: number,
+  cfg: { damping: number; stiffness: number },
+) {
+  sv.value = withSpring(to, cfg);
+}
+
+function SpringButton({
+  onPress,
+  style,
+  children,
+}: {
+  onPress: () => void;
+  style: ViewStyle;
+  children: ReactNode;
+}) {
+  const pressed = useSharedValue(0);
+
+  const press = useAnimatedStyle(() => ({
+    transform: [{ scale: interpolate(pressed.value, [0, 1], [1, 0.96]) }],
+    opacity: interpolate(pressed.value, [0, 1], [1, 0.9]),
+  }));
+
+  return (
+    <AnimatedPressable
+      onPress={onPress}
+      onPressIn={() => springTo(pressed, 1, { damping: 22, stiffness: 420 })}
+      onPressOut={() => springTo(pressed, 0, { damping: 16, stiffness: 300 })}
+      style={[style, press]}
+    >
+      {children}
+    </AnimatedPressable>
+  );
+}
 
 export default function Index() {
   const insets = useSafeAreaInsets();
 
   const onCreateRoom = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    // TODO: navigate to create-room
   };
 
   const onJoinRoom = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // TODO: navigate to join-room
   };
 
   return (
-    // overflow: "hidden" clips the drifting backdrop blobs to the screen.
     <View style={styles.root}>
       <StatusBar style="light" />
 
-      {/* Molten dusk background: drifting radial blobs + film grain. */}
       <LavaBackdrop />
 
-      {/* Content sits above the gradients. box-none lets touches fall through
-          empty areas to nothing while still hitting the buttons. */}
       <View style={styles.content} pointerEvents="box-none">
         <View style={[styles.header, { paddingTop: insets.top + 88 }]}>
-          {/* Big single-line display lockup. Tight negative tracking keeps it
-              feeling like a movie title card, not a wide banner. */}
           <Text
             style={styles.title}
             allowFontScaling={false}
@@ -45,39 +84,31 @@ export default function Index() {
           <Text style={styles.tagline}>Pick the movie. Together.</Text>
         </View>
 
-        {/* Deck takes the whole middle so no gap is dead space. */}
         <View style={styles.deckWrap} pointerEvents="box-none">
           <PosterStack />
         </View>
 
-        <View
+        <Animated.View
+          entering={FadeInDown.delay(150).springify().damping(17)}
           style={[styles.cardWrap, { paddingBottom: insets.bottom + 16 }]}
           pointerEvents="box-none"
         >
-          {/* Frosted-glass card. overflow:hidden clips the blur to the rounded
-              corners; the translucent border/fill add the glassy edge. */}
           <BlurView intensity={40} tint="light" style={styles.card}>
-            <Pressable
-              onPress={onCreateRoom}
-              style={({ pressed }) => [
-                styles.signupButton,
-                pressed && styles.pressed,
-              ]}
-            >
+            <SpringButton onPress={onCreateRoom} style={styles.signupButton}>
               <Text style={styles.signupLabel}>Create a Room</Text>
-            </Pressable>
+            </SpringButton>
 
-            <Pressable
-              onPress={onJoinRoom}
-              style={({ pressed }) => [
-                styles.ghostButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={styles.ghostLabel}>Join Room</Text>
-            </Pressable>
+            <View style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerLabel}>or</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            <SpringButton onPress={onJoinRoom} style={styles.ghostButton}>
+              <Text style={styles.ghostLabel}>Join with a Code</Text>
+            </SpringButton>
           </BlurView>
-        </View>
+        </Animated.View>
       </View>
     </View>
   );
@@ -87,7 +118,7 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     overflow: "hidden",
-    backgroundColor: "#050E17", // fallback behind the backdrop
+    backgroundColor: "#050E17",
   },
   content: {
     flex: 1,
@@ -99,19 +130,17 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   deckWrap: {
-    flex: 1, // eat the middle so the layout never leaves an empty band
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },
   title: {
-    fontSize: 58, // one line; adjustsFontSizeToFit shrinks on narrow screens
+    fontSize: 58,
     lineHeight: 64,
     fontWeight: "800",
     color: "#FFFFFF",
     textAlign: "center",
-    letterSpacing: -1, // tight display tracking; wide tracking reads generic
-    // One soft, low-offset shadow: enough to lift the title off the bright
-    // blobs without the muddy doubled-edge look a heavy shadow gives.
+    letterSpacing: -1,
     textShadowColor: "rgba(0,0,0,0.30)",
     textShadowOffset: { width: 0, height: 3 },
     textShadowRadius: 10,
@@ -140,23 +169,48 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: "#FF7A3C",
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
   },
   signupLabel: {
     color: "#000000",
     fontSize: 17,
     fontWeight: "700",
+    letterSpacing: 0.2,
+  },
+  divider: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 18,
+    marginVertical: 2,
+  },
+  dividerLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(255,255,255,0.28)",
+  },
+  dividerLabel: {
+    color: "rgba(255,255,255,0.55)",
+    fontSize: 12,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 1.2,
   },
   ghostButton: {
     height: 52,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.30)",
     alignItems: "center",
     justifyContent: "center",
   },
   ghostLabel: {
     color: "#FFFFFF",
     fontSize: 16,
-    fontWeight: "500",
-  },
-  pressed: {
-    opacity: 0.7,
+    fontWeight: "600",
   },
 });
