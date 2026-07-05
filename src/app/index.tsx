@@ -1,98 +1,194 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { BlurView } from "expo-blur";
+import * as Haptics from "expo-haptics";
+import { StatusBar } from "expo-status-bar";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { LavaBackdrop } from "@/components/lava-backdrop";
+import { PosterStack } from "@/components/poster-stack";
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
+export default function Index() {
+  const insets = useSafeAreaInsets();
+
+  const onCreateRoom = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    // TODO: navigate to create-room
+  };
+
+  const onJoinRoom = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // TODO: navigate to join-room
+  };
+
   return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
+    // overflow: "hidden" clips the drifting backdrop blobs to the screen.
+    <View style={styles.root}>
+      <StatusBar style="light" />
 
-export default function HomeScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
+      {/* Molten dusk background: drifting radial blobs + film grain. */}
+      <LavaBackdrop />
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
+      {/* Content sits above the gradients. box-none lets touches fall through
+          empty areas to nothing while still hitting the buttons. */}
+      <View style={styles.content} pointerEvents="box-none">
+        <View style={[styles.header, { paddingTop: insets.top + 88 }]}>
+          {/* Big single-line display lockup. Tight negative tracking keeps it
+              feeling like a movie title card, not a wide banner. The title is
+              rendered twice, stacked: a soft blurred ghost underneath casts an
+              ambient drop shadow (RN allows only ONE textShadow per <Text>, so
+              real depth needs a second layer), the crisp white copy on top. */}
+          <View style={styles.titleStack}>
+            <Text
+              style={[styles.title, styles.titleShadow]}
+              allowFontScaling={false}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              aria-hidden
+            >
+              Reel Duel
+            </Text>
+            <Text
+              style={[styles.title, styles.titleFront]}
+              allowFontScaling={false}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              Reel Duel
+            </Text>
+          </View>
+          <Text style={styles.tagline}>Pick the movie. Together.</Text>
+        </View>
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
+        {/* Deck takes the whole middle so no gap is dead space. */}
+        <View style={styles.deckWrap} pointerEvents="box-none">
+          <PosterStack />
+        </View>
 
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+        <View
+          style={[styles.cardWrap, { paddingBottom: insets.bottom + 16 }]}
+          pointerEvents="box-none"
+        >
+          {/* Frosted-glass card. overflow:hidden clips the blur to the rounded
+              corners; the translucent border/fill add the glassy edge. */}
+          <BlurView intensity={40} tint="light" style={styles.card}>
+            <Pressable
+              onPress={onCreateRoom}
+              style={({ pressed }) => [
+                styles.signupButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.signupLabel}>Create a Room</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={onJoinRoom}
+              style={({ pressed }) => [
+                styles.ghostButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.ghostLabel}>Join Room</Text>
+            </Pressable>
+          </BlurView>
+        </View>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
+    overflow: "hidden",
+    backgroundColor: "#050E17", // fallback behind the backdrop
   },
-  safeArea: {
+  content: {
     flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
+    justifyContent: "space-between",
   },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
+  header: {
+    alignItems: "center",
+    paddingHorizontal: 32,
+    gap: 14,
+  },
+  deckWrap: {
+    flex: 1, // eat the middle so the layout never leaves an empty band
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  titleStack: {
+    position: "relative",
   },
   title: {
-    textAlign: 'center',
+    fontSize: 58, // one line; adjustsFontSizeToFit shrinks on narrow screens
+    lineHeight: 64,
+    fontWeight: "800",
+    textAlign: "center",
+    letterSpacing: -1, // tight display tracking; wide tracking reads generic
   },
-  code: {
-    textTransform: 'uppercase',
+  // Front layer: crisp white text with a tight contact shadow that grounds
+  // the letters right where they sit.
+  titleFront: {
+    color: "#FFFFFF",
+    textShadowColor: "rgba(0,0,0,0.28)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 5,
   },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+  // Back layer: a heavily blurred dark ghost, offset down, that reads as the
+  // soft ambient shadow the light casts behind the title.
+  titleShadow: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    color: "rgba(0,0,0,0.55)",
+    textShadowColor: "rgba(0,0,0,0.55)",
+    textShadowOffset: { width: 0, height: 12 },
+    textShadowRadius: 26,
+  },
+  tagline: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.90)",
+    letterSpacing: 0.2,
+  },
+  cardWrap: {
+    paddingHorizontal: 16,
+  },
+  card: {
+    borderRadius: 28,
+    overflow: "hidden",
+    padding: 16,
+    gap: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.22)",
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  signupButton: {
+    height: 56,
+    borderRadius: 999,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  signupLabel: {
+    color: "#000000",
+    fontSize: 17,
+    fontWeight: "700",
+  },
+  ghostButton: {
+    height: 52,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ghostLabel: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "500",
+  },
+  pressed: {
+    opacity: 0.7,
   },
 });
