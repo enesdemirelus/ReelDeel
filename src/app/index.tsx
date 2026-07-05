@@ -33,29 +33,15 @@ export default function Index() {
       <View style={styles.content} pointerEvents="box-none">
         <View style={[styles.header, { paddingTop: insets.top + 88 }]}>
           {/* Big single-line display lockup. Tight negative tracking keeps it
-              feeling like a movie title card, not a wide banner. The title is
-              rendered twice, stacked: a soft blurred ghost underneath casts an
-              ambient drop shadow (RN allows only ONE textShadow per <Text>, so
-              real depth needs a second layer), the crisp white copy on top. */}
-          <View style={styles.titleStack}>
-            <Text
-              style={[styles.title, styles.titleShadow]}
-              allowFontScaling={false}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              aria-hidden
-            >
-              Reel Duel
-            </Text>
-            <Text
-              style={[styles.title, styles.titleFront]}
-              allowFontScaling={false}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              Reel Duel
-            </Text>
-          </View>
+              feeling like a movie title card, not a wide banner. */}
+          <Text
+            style={styles.title}
+            allowFontScaling={false}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
+            Reel Duel
+          </Text>
           <Text style={styles.tagline}>Pick the movie. Together.</Text>
         </View>
 
@@ -117,36 +103,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  titleStack: {
-    position: "relative",
-  },
   title: {
     fontSize: 58, // one line; adjustsFontSizeToFit shrinks on narrow screens
     lineHeight: 64,
     fontWeight: "800",
+    color: "#FFFFFF",
     textAlign: "center",
     letterSpacing: -1, // tight display tracking; wide tracking reads generic
-  },
-  // Front layer: crisp white text with a tight contact shadow that grounds
-  // the letters right where they sit.
-  titleFront: {
-    color: "#FFFFFF",
-    textShadowColor: "rgba(0,0,0,0.28)",
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 5,
-  },
-  // Back layer: a heavily blurred dark ghost, offset down, that reads as the
-  // soft ambient shadow the light casts behind the title.
-  titleShadow: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    color: "rgba(0,0,0,0.55)",
-    textShadowColor: "rgba(0,0,0,0.55)",
-    textShadowOffset: { width: 0, height: 12 },
-    textShadowRadius: 26,
+    // One soft, low-offset shadow: enough to lift the title off the bright
+    // blobs without the muddy doubled-edge look a heavy shadow gives.
+    textShadowColor: "rgba(0,0,0,0.30)",
+    textShadowOffset: { width: 0, height: 3 },
+    textShadowRadius: 10,
   },
   tagline: {
     fontSize: 20,
