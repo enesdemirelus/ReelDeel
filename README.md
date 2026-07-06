@@ -15,6 +15,20 @@ Settle the movie debate. Create a room, friends join with a code, movies face of
 - **Bracket**: classic tournament, winners advance
 - **King of the Hill**: winner stays, next challenger steps up
 
+## Screenshots
+
+| Main Menu | Create Room | Join with Code |
+|:---:|:---:|:---:|
+| ![Main Menu](screenshots/main-menu.webp) | ![Create Room](screenshots/create-room.webp) | ![Join with Code](screenshots/join-with-code.webp) |
+
+| Lobby (Host) | Lobby (Player) | Vote |
+|:---:|:---:|:---:|
+| ![Lobby](screenshots/lobby.webp) | ![Lobby Player View](screenshots/lobby-player-view.webp) | ![Vote](screenshots/vote.webp) |
+
+| Bracket | King of the Hill |
+|:---:|:---:|
+| ![Bracket](screenshots/bracket.webp) | ![King of the Hill](screenshots/king-of-the-hill.webp) |
+
 ## Stack
 
 - React Native + Expo (TypeScript)
