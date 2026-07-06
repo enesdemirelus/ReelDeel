@@ -1,5 +1,6 @@
-import { Image } from "expo-image";
+import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SymbolView } from "expo-symbols";
@@ -24,17 +25,16 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { GlassField } from "@/components/ui/glass-field";
-import {
-  SegmentedControl,
-  type SegmentOption,
-} from "@/components/ui/segmented-control";
+import { LavaBackdrop } from "@/components/lava-backdrop";
 import { EdgeBlur } from "@/components/ui/edge-blur";
+import { GlassField } from "@/components/ui/glass-field";
+import { SelectCards, type SelectOption } from "@/components/ui/select-cards";
 import { SettingBlock } from "@/components/ui/setting-block";
 import { Stepper } from "@/components/ui/stepper";
-import { LavaBackdrop } from "@/components/lava-backdrop";
+import { Toggle } from "@/components/ui/toggle";
 import { posterUri } from "@/lib/tmdb";
 import { removeMovie, useMovieSelection } from "@/state/movie-selection";
+import { initRoom } from "@/state/room";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -50,14 +50,34 @@ function poolWarning(mode: Mode, count: number): string | null {
   return null;
 }
 
-const MODE_OPTIONS: SegmentOption<Mode>[] = [
-  { value: "bracket", label: "Bracket", caption: "Tournament" },
-  { value: "koth", label: "King of the Hill", caption: "Winner stays on" },
+const MODE_OPTIONS: SelectOption<Mode>[] = [
+  {
+    value: "bracket",
+    label: "Bracket",
+    caption: "Tournament",
+    icon: "trophy.fill",
+  },
+  {
+    value: "koth",
+    label: "King of the Hill",
+    caption: "Winner stays on",
+    icon: "crown.fill",
+  },
 ];
 
-const SOURCE_OPTIONS: SegmentOption<Source>[] = [
-  { value: "players", label: "Players add", caption: "Everyone contributes" },
-  { value: "host", label: "I'll add them", caption: "Just you" },
+const SOURCE_OPTIONS: SelectOption<Source>[] = [
+  {
+    value: "players",
+    label: "Players add",
+    caption: "Everyone contributes",
+    icon: "person.2.fill",
+  },
+  {
+    value: "host",
+    label: "I'll add them",
+    caption: "Just you",
+    icon: "person.fill",
+  },
 ];
 
 function springTo(
@@ -104,6 +124,7 @@ export default function Create() {
   const [mode, setMode] = useState<Mode>("bracket");
   const [source, setSource] = useState<Source>("players");
   const [perPlayer, setPerPlayer] = useState(3);
+  const [anonymous, setAnonymous] = useState(false);
   const movies = useMovieSelection();
 
   const headerZoneH = insets.top + 172;
@@ -124,6 +145,13 @@ export default function Create() {
     ],
   }));
 
+  const titleStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [0, 56], [1, 0], "clamp"),
+    transform: [
+      { translateY: interpolate(scrollY.value, [0, 56], [0, -6], "clamp") },
+    ],
+  }));
+
   const onBack = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.back();
@@ -139,8 +167,22 @@ export default function Create() {
     removeMovie(id);
   };
 
+  const onToggleAnonymous = () => {
+    Haptics.selectionAsync();
+    setAnonymous((prev) => !prev);
+  };
+
   const onCreate = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    initRoom({
+      role: "host",
+      name,
+      mode,
+      source,
+      anonymous,
+      perPlayer,
+      seedPool: source === "host" ? movies : [],
+    });
     router.push("/lobby");
   };
 
@@ -179,7 +221,7 @@ export default function Create() {
             </SettingBlock>
 
             <SettingBlock label="Format" caption="How movies face off.">
-              <SegmentedControl
+              <SelectCards
                 options={MODE_OPTIONS}
                 value={mode}
                 onChange={setMode}
@@ -187,16 +229,41 @@ export default function Create() {
             </SettingBlock>
 
             <SettingBlock label="Who adds movies">
-              <SegmentedControl
+              <SelectCards
                 options={SOURCE_OPTIONS}
                 value={source}
                 onChange={setSource}
               />
             </SettingBlock>
 
+            <Pressable style={styles.anonRow} onPress={onToggleAnonymous}>
+              <View style={styles.anonIcon}>
+                <SymbolView
+                  name="eye.slash.fill"
+                  tintColor="rgba(255,255,255,0.7)"
+                  size={17}
+                  weight="semibold"
+                />
+              </View>
+              <View style={styles.anonText}>
+                <Text style={styles.anonTitle} allowFontScaling={false}>
+                  Anonymous mode
+                </Text>
+                <Text style={styles.anonCaption} allowFontScaling={false}>
+                  Hide who added which movie.
+                </Text>
+              </View>
+              <View pointerEvents="none">
+                <Toggle value={anonymous} onValueChange={onToggleAnonymous} />
+              </View>
+            </Pressable>
+
             {source === "players" ? (
               <Animated.View entering={FadeInDown.springify().damping(18)}>
-                <SettingBlock label="Movies per player">
+                <SettingBlock
+                  label="Movies per player"
+                  caption="Most each player can add to the pool."
+                >
                   <Stepper
                     value={perPlayer}
                     min={1}
@@ -289,11 +356,20 @@ export default function Create() {
             style={[styles.headerZone, { height: headerZoneH }]}
             pointerEvents="box-none"
           >
-            <EdgeBlur edge="top" intensity={64} />
+            <EdgeBlur
+              edge="top"
+              intensity={64}
+              minIntensity={8}
+              scrollY={scrollY}
+              scrollRange={[0, 56]}
+            />
             <View style={[styles.header, { paddingTop: insets.top + 56 }]}>
-              <Text style={styles.title} allowFontScaling={false}>
+              <Animated.Text
+                style={[styles.title, titleStyle]}
+                allowFontScaling={false}
+              >
                 Create a Room
-              </Text>
+              </Animated.Text>
               <Animated.Text style={[styles.tagline, taglineStyle]}>
                 Set up your movie night.
               </Animated.Text>
@@ -304,6 +380,11 @@ export default function Create() {
             onPress={onBack}
             style={{ ...styles.backButton, top: insets.top + 12 }}
           >
+            <BlurView
+              tint="dark"
+              intensity={40}
+              style={StyleSheet.absoluteFill}
+            />
             <SymbolView
               name="chevron.left"
               tintColor="#FFFFFF"
@@ -318,13 +399,20 @@ export default function Create() {
             pointerEvents="box-none"
           >
             <EdgeBlur edge="bottom" intensity={64} />
-            <View style={[styles.footerInner, { paddingBottom: insets.bottom + 16 }]}>
+            <View
+              style={[
+                styles.footerInner,
+                { paddingBottom: insets.bottom + 16 },
+              ]}
+            >
               {ready ? (
                 <SpringButton onPress={onCreate} style={styles.signupButton}>
                   <Text style={styles.signupLabel}>Create Room</Text>
                 </SpringButton>
               ) : (
-                <View style={[styles.signupButton, styles.signupButtonDisabled]}>
+                <View
+                  style={[styles.signupButton, styles.signupButtonDisabled]}
+                >
                   <Text style={styles.signupLabel}>Create Room</Text>
                 </View>
               )}
@@ -355,11 +443,12 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 999,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(255,255,255,0.22)",
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(10,16,24,0.55)",
   },
   headerZone: {
     position: "absolute",
@@ -395,6 +484,42 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingBottom: 150,
+  },
+  anonRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 22,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  anonIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  anonText: {
+    flex: 1,
+    gap: 2,
+  },
+  anonTitle: {
+    fontFamily: "Unbounded_600SemiBold",
+    color: "#FFFFFF",
+    fontSize: 14,
+    letterSpacing: 0.1,
+  },
+  anonCaption: {
+    fontFamily: "Unbounded_400Regular",
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 11,
+    lineHeight: 15,
   },
   addButton: {
     height: 52,

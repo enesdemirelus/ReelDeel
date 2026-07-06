@@ -47,6 +47,11 @@ export function clearSelection() {
   emit();
 }
 
+export function setSelection(movies: Movie[]) {
+  selection = [...movies];
+  emit();
+}
+
 export function useMovieSelection() {
   return useSyncExternalStore(subscribe, getSnapshot);
 }

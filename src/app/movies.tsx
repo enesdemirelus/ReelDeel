@@ -25,6 +25,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { GlassField } from "@/components/ui/glass-field";
+import { EdgeBlur } from "@/components/ui/edge-blur";
 import { LavaBackdrop } from "@/components/lava-backdrop";
 import { posterUri, searchMovies } from "@/lib/tmdb";
 import {
@@ -195,6 +196,7 @@ export default function Movies() {
           onPress={onBack}
           style={{ ...styles.backButton, top: insets.top + 12 }}
         >
+          <BlurView tint="dark" intensity={40} style={StyleSheet.absoluteFill} />
           <SymbolView
             name="chevron.left"
             tintColor="#FFFFFF"
@@ -258,14 +260,15 @@ export default function Movies() {
 
       <Animated.View
         entering={FadeInDown.delay(150).springify().damping(17)}
-        style={[styles.cardWrap, { paddingBottom: insets.bottom + 16 }]}
+        style={[styles.footerZone, { height: insets.bottom + 150 }]}
         pointerEvents="box-none"
       >
-        <BlurView intensity={40} tint="light" style={styles.card}>
+        <EdgeBlur edge="bottom" intensity={64} />
+        <View style={[styles.footerInner, { paddingBottom: insets.bottom + 16 }]}>
           <SpringButton onPress={onDone} style={styles.doneButton}>
             <Text style={styles.doneLabel}>{doneLabel}</Text>
           </SpringButton>
-        </BlurView>
+        </View>
       </Animated.View>
     </View>
   );
@@ -291,11 +294,12 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 999,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(255,255,255,0.22)",
-    backgroundColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(10,16,24,0.55)",
   },
   header: {
     alignItems: "center",
@@ -303,9 +307,9 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   title: {
-    fontSize: 40,
-    lineHeight: 46,
-    fontWeight: "800",
+    fontFamily: "Unbounded_800ExtraBold",
+    fontSize: 34,
+    lineHeight: 44,
     color: "#FFFFFF",
     textAlign: "center",
     letterSpacing: -1,
@@ -314,9 +318,9 @@ const styles = StyleSheet.create({
     textShadowRadius: 10,
   },
   tagline: {
-    fontSize: 20,
-    fontWeight: "600",
-    color: "rgba(255,255,255,0.90)",
+    fontFamily: "Unbounded_500Medium",
+    fontSize: 14,
+    color: "rgba(255,255,255,0.82)",
     letterSpacing: 0.2,
     textAlign: "center",
   },
@@ -331,9 +335,9 @@ const styles = StyleSheet.create({
     paddingBottom: 120,
   },
   sectionLabel: {
+    fontFamily: "Unbounded_700Bold",
     color: "rgba(255,255,255,0.55)",
-    fontSize: 13,
-    fontWeight: "700",
+    fontSize: 12,
     letterSpacing: 1,
     textTransform: "uppercase",
     paddingBottom: 6,
@@ -361,15 +365,15 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   rowTitle: {
+    fontFamily: "Unbounded_600SemiBold",
     color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "600",
-    letterSpacing: 0.2,
+    fontSize: 14,
+    letterSpacing: 0.1,
   },
   rowYear: {
+    fontFamily: "Unbounded_400Regular",
     color: "rgba(255,255,255,0.45)",
-    fontSize: 13,
-    fontWeight: "500",
+    fontSize: 12,
   },
   separator: {
     height: StyleSheet.hairlineWidth,
@@ -382,32 +386,27 @@ const styles = StyleSheet.create({
     paddingTop: 48,
   },
   emptyText: {
+    fontFamily: "Unbounded_500Medium",
     color: "rgba(255,255,255,0.45)",
-    fontSize: 15,
-    fontWeight: "500",
+    fontSize: 13,
     letterSpacing: 0.2,
   },
   errorText: {
+    fontFamily: "Unbounded_500Medium",
     color: "rgba(248,113,113,0.85)",
-    fontSize: 15,
-    fontWeight: "500",
+    fontSize: 13,
     letterSpacing: 0.2,
   },
-  cardWrap: {
+  footerZone: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 16,
+    justifyContent: "flex-end",
   },
-  card: {
-    borderRadius: 28,
-    overflow: "hidden",
-    padding: 16,
-    gap: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.22)",
-    backgroundColor: "rgba(255,255,255,0.08)",
+  footerInner: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
   },
   doneButton: {
     height: 56,
@@ -422,9 +421,9 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   doneLabel: {
+    fontFamily: "Unbounded_700Bold",
     color: "#000000",
-    fontSize: 17,
-    fontWeight: "700",
-    letterSpacing: 0.2,
+    fontSize: 15,
+    letterSpacing: 0.1,
   },
 });

@@ -21,6 +21,7 @@ export function GlassField({
   maxLength,
   autoCapitalize,
   returnKeyType,
+  autoFocus,
 }: {
   value: string;
   onChangeText: (text: string) => void;
@@ -28,6 +29,7 @@ export function GlassField({
   maxLength?: number;
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
   returnKeyType?: "done" | "next";
+  autoFocus?: boolean;
 }): React.JSX.Element {
   const [, setFocused] = useState(false);
   const focus = useSharedValue(0);
@@ -61,6 +63,7 @@ export function GlassField({
       maxLength={maxLength}
       autoCapitalize={autoCapitalize}
       returnKeyType={returnKeyType}
+      autoFocus={autoFocus}
       autoCorrect={false}
       keyboardAppearance="dark"
       style={[styles.input, borderStyle]}

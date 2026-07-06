@@ -297,7 +297,7 @@ export default function Join() {
     if (code.length !== CODE_LENGTH) return;
     if (phase === "correct") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      router.push("/lobby");
+      router.push("/username");
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

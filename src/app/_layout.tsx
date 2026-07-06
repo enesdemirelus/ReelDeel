@@ -1,4 +1,5 @@
 import {
+  Unbounded_400Regular,
   Unbounded_500Medium,
   Unbounded_600SemiBold,
   Unbounded_700Bold,
@@ -15,6 +16,7 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
+    Unbounded_400Regular,
     Unbounded_500Medium,
     Unbounded_600SemiBold,
     Unbounded_700Bold,
