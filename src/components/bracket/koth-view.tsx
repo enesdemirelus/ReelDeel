@@ -136,9 +136,9 @@ export function KothView({
   onSeeded: () => void;
 }) {
   const [display, setDisplay] = useState<(Movie | null)[]>(() =>
-    Array(8).fill(null),
+    Array(seeds.length).fill(null),
   );
-  const lockedRef = useRef<boolean[]>(Array(8).fill(false));
+  const lockedRef = useRef<boolean[]>(Array(seeds.length).fill(false));
 
   useEffect(() => {
     if (!seeding) return;
@@ -171,7 +171,7 @@ export function KothView({
         clearInterval(spin);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         onSeeded();
-      }, 850 + 8 * 230 + 500),
+      }, 850 + seeds.length * 230 + 500),
     );
 
     return () => {
@@ -199,7 +199,7 @@ export function KothView({
 
       <View style={styles.lineup}>
         {(seeding
-          ? Array.from({ length: 7 }, (_, i) => ({
+          ? Array.from({ length: Math.max(0, seeds.length - 1) }, (_, i) => ({
               movie: display[i + 1],
               state: "upcoming" as ChallengerState,
             }))

@@ -1,5 +1,5 @@
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SymbolView } from "expo-symbols";
 import { useState } from "react";
@@ -18,25 +18,33 @@ import { GlassField } from "@/components/ui/glass-field";
 import { SpringButton } from "@/components/ui/spring-button";
 import { LavaBackdrop } from "@/components/lava-backdrop";
 import { avatarColor, initials } from "@/lib/avatar";
-import { initRoom } from "@/state/room";
+import { joinRoom } from "@/state/room";
 
 export default function Username() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { code } = useLocalSearchParams<{ code?: string }>();
 
   const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  const ready = name.trim().length > 0;
+  const ready = name.trim().length > 0 && !!code;
 
   const onBack = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.back();
   };
 
-  const onContinue = () => {
+  const onContinue = async () => {
+    if (busy || !code) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    initRoom({ role: "player", youName: name });
-    router.replace("/lobby");
+    setBusy(true);
+    try {
+      await joinRoom(code, name);
+      router.replace("/lobby");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -101,13 +109,15 @@ export default function Username() {
           >
             <EdgeBlur edge="bottom" intensity={64} />
             <View style={[styles.footerInner, { paddingBottom: insets.bottom + 16 }]}>
-              {ready ? (
+              {ready && !busy ? (
                 <SpringButton onPress={onContinue} style={styles.signupButton}>
                   <Text style={styles.signupLabel}>Enter Lobby</Text>
                 </SpringButton>
               ) : (
                 <View style={[styles.signupButton, styles.signupButtonDisabled]}>
-                  <Text style={styles.signupLabel}>Enter Lobby</Text>
+                  <Text style={styles.signupLabel}>
+                    {busy ? "Joining…" : "Enter Lobby"}
+                  </Text>
                 </View>
               )}
             </View>

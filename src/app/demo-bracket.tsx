@@ -86,6 +86,60 @@ function makeDraw() {
   return { runId: Math.floor(Math.random() * 1e9), seeds: shuffle(POOL).slice(0, 8) };
 }
 
+function LocalDuel({
+  left,
+  right,
+  label,
+  onResolved,
+}: {
+  left: Movie;
+  right: Movie;
+  label: string;
+  onResolved: (winner: "left" | "right") => void;
+}) {
+  const [endsAt] = useState(() => Date.now() + 6000);
+  const [counts, setCounts] = useState({ left: 0, right: 0 });
+  const [myVote, setMyVote] = useState<"left" | "right" | null>(null);
+  const [revealed, setRevealed] = useState(false);
+
+  const winner: "left" | "right" = counts.right > counts.left ? "right" : "left";
+
+  useEffect(() => {
+    const t = setTimeout(() => setRevealed(true), 6000);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    if (!revealed) return;
+    const t = setTimeout(() => onResolved(winner), 1600);
+    return () => clearTimeout(t);
+  }, [revealed, winner, onResolved]);
+
+  const onVote = (side: "left" | "right") => {
+    if (revealed || myVote === side) return;
+    setMyVote(side);
+    setCounts((c) => {
+      const next = { ...c, [side]: c[side] + 1 };
+      if (myVote) next[myVote] = Math.max(0, next[myVote] - 1);
+      return next;
+    });
+  };
+
+  return (
+    <DuelVote
+      left={left}
+      right={right}
+      label={label}
+      counts={counts}
+      endsAt={endsAt}
+      myVote={myVote}
+      revealed={revealed}
+      winner={revealed ? winner : null}
+      onVote={onVote}
+    />
+  );
+}
+
 export default function DemoBracket() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -195,7 +249,7 @@ export default function DemoBracket() {
       ) : null}
 
       {phase === "voting" && duel.a && duel.b ? (
-        <DuelVote
+        <LocalDuel
           key={`${draw.runId}-${duelIndex}`}
           left={duel.a}
           right={duel.b}

@@ -7,6 +7,8 @@ import { ScrollView, Share, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { BracketGame } from "@/components/bracket/bracket-game";
+import { KothGame } from "@/components/bracket/koth-game";
 import { EdgeBlur } from "@/components/ui/edge-blur";
 import { SpringButton } from "@/components/ui/spring-button";
 import { HoldButton } from "@/components/lobby/hold-button";
@@ -15,7 +17,13 @@ import { MoviePool } from "@/components/lobby/movie-pool";
 import { Roster } from "@/components/lobby/roster";
 import { LavaBackdrop } from "@/components/lava-backdrop";
 import { removeMovie, useMovieSelection } from "@/state/movie-selection";
-import { leaveRoom, type PoolMovie, startGame, useRoom } from "@/state/room";
+import {
+  leaveRoom,
+  type PoolMovie,
+  startGame,
+  syncMyMovies,
+  useRoom,
+} from "@/state/room";
 
 const MIN_TO_START = 2;
 
@@ -39,6 +47,10 @@ export default function Lobby() {
   useEffect(() => {
     if (!room) router.replace("/");
   }, [room, router]);
+
+  useEffect(() => {
+    syncMyMovies(selection);
+  }, [selection]);
 
   useEffect(() => () => leaveRoom(), []);
 
@@ -89,11 +101,11 @@ export default function Lobby() {
   };
 
   const onStart = () => {
-    startGame();
+    startGame(movies);
   };
 
   const onExpire = () => {
-    if (isHost && enoughMovies) startGame();
+    if (isHost && enoughMovies) startGame(movies);
   };
 
   const onExitStarted = () => {
@@ -239,30 +251,12 @@ export default function Lobby() {
       </View>
 
       {started ? (
-        <Animated.View
-          entering={FadeIn.duration(260)}
-          style={[styles.startedOverlay, { paddingTop: insets.top }]}
-        >
-          <View style={styles.startedInner}>
-            <SymbolView
-              name="flame.fill"
-              tintColor="#FF7A3C"
-              size={64}
-              weight="semibold"
-            />
-            <Text style={styles.startedTitle} allowFontScaling={false}>
-              Let the duel begin
-            </Text>
-            <Text style={styles.startedSub}>
-              {movies.length} movies · {players.length} players · {modeLabel}
-            </Text>
-          </View>
-
-          <View style={[styles.startedFooter, { paddingBottom: insets.bottom + 16 }]}>
-            <SpringButton onPress={onExitStarted} style={styles.exitButton}>
-              <Text style={styles.exitLabel}>Back to home</Text>
-            </SpringButton>
-          </View>
+        <Animated.View entering={FadeIn.duration(260)} style={styles.startedOverlay}>
+          {config.mode === "bracket" ? (
+            <BracketGame pool={movies} onExit={onExitStarted} />
+          ) : (
+            <KothGame pool={movies} onExit={onExitStarted} />
+          )}
         </Animated.View>
       ) : null}
     </View>
@@ -439,50 +433,6 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 20,
-    backgroundColor: "rgba(5,14,23,0.96)",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  startedInner: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 18,
-    paddingHorizontal: 32,
-  },
-  startedTitle: {
-    fontFamily: "Unbounded_800ExtraBold",
-    fontSize: 34,
-    lineHeight: 42,
-    color: "#FFFFFF",
-    textAlign: "center",
-    letterSpacing: -0.5,
-  },
-  startedSub: {
-    fontFamily: "Unbounded_500Medium",
-    fontSize: 14,
-    color: "rgba(255,255,255,0.6)",
-    textAlign: "center",
-  },
-  startedFooter: {
-    width: "100%",
-    paddingHorizontal: 16,
-  },
-  exitButton: {
-    height: 56,
-    borderRadius: 999,
-    backgroundColor: "#FFFFFF",
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#FF7A3C",
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-  },
-  exitLabel: {
-    fontFamily: "Unbounded_700Bold",
-    fontSize: 15,
-    color: "#000000",
-    letterSpacing: 0.1,
+    backgroundColor: "#050E17",
   },
 });

@@ -26,21 +26,7 @@ const PAD_V = 10;
 const SLOT_H = 53;
 const VS_H = 14;
 
-const COL_X = [0, CARD_W + COL_GAP, (CARD_W + COL_GAP) * 2];
-const R1_Y = [0, 1, 2, 3].map((i) => i * (CARD_H + VGAP));
-const CANVAS_W = COL_X[2] + CARD_W;
-const CANVAS_H = R1_Y[3] + CARD_H;
-
 const centerOf = (top: number) => top + CARD_H / 2;
-const R1_C = R1_Y.map(centerOf);
-const R2_C = [(R1_C[0] + R1_C[1]) / 2, (R1_C[2] + R1_C[3]) / 2];
-const R2_Y = R2_C.map((c) => c - CARD_H / 2);
-const R3_C = (R2_C[0] + R2_C[1]) / 2;
-const R3_Y = R3_C - CARD_H / 2;
-
-const ROUND_N = [4, 2, 1];
-const ROUND_TOP = [R1_Y, R2_Y, [R3_Y]];
-const ROUND_CEN = [R1_C, R2_C, [R3_C]];
 
 const LINE = "rgba(255,255,255,0.16)";
 const ACCENT = "#FF7A3C";
@@ -65,11 +51,49 @@ function bracketConnector(
   ];
 }
 
-const CONNECTORS: Seg[] = [
-  ...bracketConnector(COL_X[0] + CARD_W, COL_X[1], R1_C[0], R1_C[1], R2_C[0]),
-  ...bracketConnector(COL_X[0] + CARD_W, COL_X[1], R1_C[2], R1_C[3], R2_C[1]),
-  ...bracketConnector(COL_X[1] + CARD_W, COL_X[2], R2_C[0], R2_C[1], R3_C),
-];
+type Layout = {
+  bracketSize: number;
+  roundCount: number;
+  roundN: number[];
+  colX: number[];
+  roundTop: number[][];
+  roundCen: number[][];
+  connectors: Seg[];
+  canvasW: number;
+  canvasH: number;
+};
+
+function computeLayout(bracketSize: number): Layout {
+  const roundCount = Math.max(1, Math.round(Math.log2(bracketSize)));
+  const roundN = Array.from({ length: roundCount }, (_, r) => bracketSize / 2 ** (r + 1));
+  const colX = Array.from({ length: roundCount }, (_, r) => r * (CARD_W + COL_GAP));
+  const r0Top = Array.from({ length: roundN[0] }, (_, i) => i * (CARD_H + VGAP));
+  const roundCen: number[][] = [r0Top.map(centerOf)];
+  for (let r = 1; r < roundCount; r++) {
+    const prev = roundCen[r - 1];
+    roundCen.push(
+      Array.from({ length: roundN[r] }, (_, i) => (prev[i * 2] + prev[i * 2 + 1]) / 2),
+    );
+  }
+  const roundTop = roundCen.map((cs) => cs.map((c) => c - CARD_H / 2));
+  const connectors: Seg[] = [];
+  for (let r = 0; r < roundCount - 1; r++) {
+    for (let i = 0; i < roundN[r + 1]; i++) {
+      connectors.push(
+        ...bracketConnector(
+          colX[r] + CARD_W,
+          colX[r + 1],
+          roundCen[r][i * 2],
+          roundCen[r][i * 2 + 1],
+          roundCen[r + 1][i],
+        ),
+      );
+    }
+  }
+  const canvasW = colX[roundCount - 1] + CARD_W;
+  const canvasH = r0Top[roundN[0] - 1] + CARD_H;
+  return { bracketSize, roundCount, roundN, colX, roundTop, roundCen, connectors, canvasW, canvasH };
+}
 
 type SlotResult = "won" | "lost" | null;
 
@@ -186,7 +210,7 @@ export function BracketView({
   onSeeded,
 }: {
   rounds: Rounds;
-  seeds: Movie[];
+  seeds: (Movie | null)[];
   pool: Movie[];
   seeding: boolean;
   focus: boolean;
@@ -196,11 +220,13 @@ export function BracketView({
   onSeeded: () => void;
 }) {
   const { width, height } = useWindowDimensions();
+  const bracketSize = seeds.length;
+  const layout = computeLayout(bracketSize);
   const [display, setDisplay] = useState<(Movie | null)[]>(() =>
-    Array(8).fill(null),
+    Array(bracketSize).fill(null),
   );
-  const [locked, setLocked] = useState<boolean[]>(() => Array(8).fill(false));
-  const lockedRef = useRef<boolean[]>(Array(8).fill(false));
+  const [locked, setLocked] = useState<boolean[]>(() => seeds.map((s) => !s));
+  const lockedRef = useRef<boolean[]>(seeds.map((s) => !s));
 
   useEffect(() => {
     if (!seeding) return;
@@ -215,6 +241,7 @@ export function BracketView({
 
     const timers: ReturnType<typeof setTimeout>[] = [];
     seeds.forEach((movie, i) => {
+      if (!movie) return;
       timers.push(
         setTimeout(() => {
           lockedRef.current[i] = true;
@@ -234,29 +261,29 @@ export function BracketView({
         clearInterval(spin);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         onSeeded();
-      }, 850 + 8 * 230 + 500),
+      }, 850 + bracketSize * 230 + 500),
     );
 
     return () => {
       clearInterval(spin);
       for (const t of timers) clearTimeout(t);
     };
-  }, [seeding, seeds, pool, onSeeded]);
+  }, [seeding, seeds, pool, onSeeded, bracketSize]);
 
   const availTop = 96;
   const centerX = width / 2;
   const centerY = availTop + (height - availTop) / 2;
   const fit = Math.min(
     1,
-    (width - 24) / CANVAS_W,
-    (height - availTop - 40) / CANVAS_H,
+    (width - 24) / layout.canvasW,
+    (height - availTop - 40) / layout.canvasH,
   );
   const focusScale = Math.min(1.6, (width * 0.62) / CARD_W);
-  const cx = COL_X[focusRound] + CARD_W / 2;
-  const cy = ROUND_CEN[focusRound][focusIndex];
+  const cx = layout.colX[focusRound] + CARD_W / 2;
+  const cy = layout.roundCen[focusRound][focusIndex];
 
-  const restTx = centerX - (fit * CANVAS_W) / 2;
-  const restTy = centerY - (fit * CANVAS_H) / 2;
+  const restTx = centerX - (fit * layout.canvasW) / 2;
+  const restTy = centerY - (fit * layout.canvasH) / 2;
   const focusTx = centerX - focusScale * cx;
   const focusTy = centerY - focusScale * cy;
 
@@ -283,8 +310,10 @@ export function BracketView({
 
   return (
     <Animated.View style={[StyleSheet.absoluteFill, areaStyle]} pointerEvents="none">
-      <Animated.View style={[styles.canvas, canvasStyle]}>
-        {CONNECTORS.map((s, i) => (
+      <Animated.View
+        style={[styles.canvas, { width: layout.canvasW, height: layout.canvasH }, canvasStyle]}
+      >
+        {layout.connectors.map((s, i) => (
           <View
             key={i}
             style={{
@@ -298,7 +327,7 @@ export function BracketView({
           />
         ))}
 
-        {ROUND_N.map((n, r) =>
+        {layout.roundN.map((n, r) =>
           Array.from({ length: n }, (_, i) => {
             const mu = rounds[r][i];
             const seedingR0 = seeding && r === 0;
@@ -314,8 +343,8 @@ export function BracketView({
                 spinning={seedingR0}
                 focused={focus && r === focusRound && i === focusIndex}
                 winner={mu.winner}
-                x={COL_X[r]}
-                y={ROUND_TOP[r][i]}
+                x={layout.colX[r]}
+                y={layout.roundTop[r][i]}
               />
             );
           }),
@@ -330,8 +359,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     top: 0,
-    width: CANVAS_W,
-    height: CANVAS_H,
     transformOrigin: "0% 0%",
   },
   cell: {

@@ -30,11 +30,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { EdgeBlur } from "@/components/ui/edge-blur";
 import { LavaBackdrop } from "@/components/lava-backdrop";
+import { roomExists } from "@/state/room";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const CODE_LENGTH = 5;
-const CORRECT_CODE = "12345";
 const SLOTS = Array.from({ length: CODE_LENGTH }, (_, i) => i);
 const STAGGER = 60;
 
@@ -197,9 +197,16 @@ export default function Join() {
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
 
-  const validate = (value: string) => {
+  const validate = async (value: string) => {
     setPhase("checking");
-    const correct = value === CORRECT_CODE;
+
+    let correct = false;
+    try {
+      correct = await roomExists(value);
+    } catch {
+      correct = false;
+    }
+
     const at = (fn: () => void, ms: number) =>
       timers.current.push(setTimeout(fn, ms));
 
@@ -297,7 +304,7 @@ export default function Join() {
     if (code.length !== CODE_LENGTH) return;
     if (phase === "correct") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      router.push("/username");
+      router.push({ pathname: "/username", params: { code } });
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

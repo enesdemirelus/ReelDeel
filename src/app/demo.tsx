@@ -149,8 +149,10 @@ export default function Demo() {
         </SpringButton>
         <SpringButton onPress={onJoinFlow} style={styles.row}>
           <View style={styles.rowText}>
-            <Text style={styles.rowTitle}>Join flow (enter code 12345)</Text>
-            <Text style={styles.rowSubtitle}>Opens the join screen</Text>
+            <Text style={styles.rowTitle}>Join flow</Text>
+            <Text style={styles.rowSubtitle}>
+              Enter a real room code from another device
+            </Text>
           </View>
           <SymbolView name="chevron.right" tintColor="rgba(255,255,255,0.55)" size={15} weight="semibold" />
         </SpringButton>

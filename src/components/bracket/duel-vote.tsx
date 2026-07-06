@@ -18,48 +18,24 @@ import type { Movie } from "@/state/movie-selection";
 const ACCENT = "#FF7A3C";
 const TEAL = "#2FB3C4";
 const DANGER = "#F87171";
-const DURATION_MS = 2000;
 
 type Side = "left" | "right";
 
-const PLAN_FRACTIONS = [0.09, 0.19, 0.31, 0.43, 0.56, 0.69, 0.83, 0.92];
-
-function buildPlan(): { t: number; s: Side }[] {
-  const winner: Side = Math.random() < 0.5 ? "left" : "right";
-  const other: Side = winner === "left" ? "right" : "left";
-  const sides: Side[] = [winner, other, other, winner, other, winner, winner, winner];
-  return PLAN_FRACTIONS.map((f, i) => ({ t: Math.round(f * DURATION_MS), s: sides[i] }));
-}
-
-function Countdown({
-  endsAt,
-  onExpire,
-}: {
-  endsAt: number;
-  onExpire: () => void;
-}) {
+function Countdown({ endsAt, frozen }: { endsAt: number; frozen: boolean }) {
   const [now, setNow] = useState(() => Date.now());
-  const firedRef = useRef(false);
   const tickRef = useRef<number | null>(null);
 
-  const remaining = Math.max(0, endsAt - now);
+  const remaining = frozen ? 0 : Math.max(0, endsAt - now);
   const secs = Math.ceil(remaining / 1000);
   const urgent = secs <= 3 && remaining > 0;
 
   const scale = useSharedValue(1);
 
   useEffect(() => {
+    if (frozen) return;
     const id = setInterval(() => setNow(Date.now()), 100);
     return () => clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    if (remaining <= 0 && !firedRef.current) {
-      firedRef.current = true;
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      onExpire();
-    }
-  }, [remaining, onExpire]);
+  }, [frozen]);
 
   useEffect(() => {
     if (secs <= 0) return;
@@ -169,68 +145,46 @@ export function DuelVote({
   left,
   right,
   label,
-  onResolved,
+  counts,
+  endsAt,
+  myVote,
+  revealed,
+  winner,
+  tiebreak,
+  onVote,
+  onDevSkip,
 }: {
   left: Movie;
   right: Movie;
   label: string;
-  onResolved: (winner: Side) => void;
+  counts: { left: number; right: number };
+  endsAt: number;
+  myVote: Side | null;
+  revealed: boolean;
+  winner: Side | null;
+  tiebreak?: "flip" | "hold" | null;
+  onVote: (side: Side) => void;
+  onDevSkip?: () => void;
 }) {
-  const [endsAt] = useState(() => Date.now() + DURATION_MS);
-  const [counts, setCounts] = useState({ left: 0, right: 0 });
-  const [picked, setPicked] = useState<Side | null>(null);
-  const [revealed, setRevealed] = useState(false);
-  const pickedRef = useRef<Side | null>(null);
-
   const share = useSharedValue(0.5);
 
-  useEffect(() => {
-    const plan = buildPlan();
-    const timers = plan.map((v) =>
-      setTimeout(() => {
-        setCounts((c) => ({ ...c, [v.s]: c[v.s] + 1 }));
-        Haptics.selectionAsync();
-      }, v.t),
-    );
-    return () => {
-      for (const t of timers) clearTimeout(t);
-    };
-  }, [left, right]);
-
-  const onPick = (side: Side) => {
-    if (revealed) return;
-    const prev = pickedRef.current;
-    if (prev === side) return;
-    pickedRef.current = side;
-    setPicked(side);
-    setCounts((c) => {
-      const next = { ...c, [side]: c[side] + 1 };
-      if (prev) next[prev] = Math.max(0, next[prev] - 1);
-      return next;
-    });
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-  };
-
-  const onExpire = () => setRevealed(true);
+  const total = counts.left + counts.right;
 
   useEffect(() => {
-    const total = counts.left + counts.right;
     share.value = withSpring(total === 0 ? 0.5 : counts.left / total, {
       damping: 16,
       stiffness: 200,
     });
-  }, [counts, share]);
+  }, [counts, total, share]);
 
-  const total = counts.left + counts.right;
-  const winner: Side = counts.right > counts.left ? "right" : "left";
   const leftPct = total === 0 ? 50 : Math.round((counts.left / total) * 100);
-  const winnerMovie = winner === "left" ? left : right;
+  const winnerMovie = winner === "right" ? right : left;
 
-  useEffect(() => {
-    if (!revealed) return;
-    const t = setTimeout(() => onResolved(winner), 1600);
-    return () => clearTimeout(t);
-  }, [revealed, winner, onResolved]);
+  const onPick = (side: Side) => {
+    if (revealed) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    onVote(side);
+  };
 
   const leftBar = useAnimatedStyle(() => ({ flex: Math.max(0.001, share.value) }));
   const rightBar = useAnimatedStyle(() => ({
@@ -241,13 +195,13 @@ export function DuelVote({
     <Animated.View entering={FadeIn.duration(280)} style={styles.root}>
       <Text style={styles.round}>{label}</Text>
 
-      <Countdown endsAt={endsAt} onExpire={onExpire} />
+      <Countdown endsAt={endsAt} frozen={revealed} />
 
       <View style={styles.arena}>
         <VoteCard
           movie={left}
           side="left"
-          picked={picked === "left"}
+          picked={myVote === "left"}
           revealed={revealed}
           won={revealed && winner === "left"}
           onPick={() => onPick("left")}
@@ -260,7 +214,7 @@ export function DuelVote({
         <VoteCard
           movie={right}
           side="right"
-          picked={picked === "right"}
+          picked={myVote === "right"}
           revealed={revealed}
           won={revealed && winner === "right"}
           onPick={() => onPick("right")}
@@ -273,27 +227,59 @@ export function DuelVote({
           <Animated.View style={[styles.barFill, rightBar, { backgroundColor: TEAL }]} />
         </View>
         <View style={styles.tallyRow}>
-          <Text style={[styles.pct, { color: ACCENT }]}>{leftPct}%</Text>
-          <Text style={styles.tallyMid}>
-            {revealed ? `${total} votes in` : "voting…"}
+          <Text style={[styles.pct, { color: ACCENT }]}>
+            {leftPct}% · {counts.left}
           </Text>
-          <Text style={[styles.pct, { color: TEAL }]}>{100 - leftPct}%</Text>
+          <Text style={styles.tallyMid}>
+            {total} {total === 1 ? "vote" : "votes"}
+            {revealed ? " in" : ""}
+          </Text>
+          <Text style={[styles.pct, { color: TEAL }]}>
+            {counts.right} · {100 - leftPct}%
+          </Text>
         </View>
       </View>
 
       {revealed ? (
-        <Animated.View
-          entering={FadeInUp.delay(100).springify().damping(16)}
-          style={styles.advanceRow}
-        >
-          <SymbolView name="checkmark.circle.fill" tintColor={ACCENT} size={16} weight="bold" />
-          <Text style={styles.advanceText} numberOfLines={1}>
-            {winnerMovie.title} advances
-          </Text>
-        </Animated.View>
+        <View style={styles.revealCol}>
+          {tiebreak ? (
+            <Animated.View entering={FadeIn.duration(240)} style={styles.tiebreakPill}>
+              <SymbolView
+                name={tiebreak === "flip" ? "arrow.triangle.2.circlepath" : "crown.fill"}
+                tintColor="#FFD479"
+                size={13}
+                weight="bold"
+              />
+              <Text style={styles.tiebreakText}>
+                {tiebreak === "flip" ? "TIE · COIN FLIP" : "TIE · KING HOLDS"}
+              </Text>
+            </Animated.View>
+          ) : null}
+          <Animated.View
+            entering={FadeInUp.delay(100).springify().damping(16)}
+            style={styles.advanceRow}
+          >
+            <SymbolView name="checkmark.circle.fill" tintColor={ACCENT} size={16} weight="bold" />
+            <Text style={styles.advanceText} numberOfLines={1}>
+              {winnerMovie.title} advances
+            </Text>
+          </Animated.View>
+        </View>
       ) : (
         <Text style={styles.hint}>Tap a poster to cast your vote</Text>
       )}
+
+      {__DEV__ && onDevSkip && !revealed ? (
+        <Pressable
+          onPress={() => {
+            Haptics.selectionAsync();
+            onDevSkip();
+          }}
+          style={styles.devSkip}
+        >
+          <Text style={styles.devSkipText}>Skip (dev)</Text>
+        </Pressable>
+      ) : null}
     </Animated.View>
   );
 }
@@ -444,6 +430,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "rgba(255,255,255,0.55)",
   },
+  revealCol: {
+    alignItems: "center",
+    gap: 10,
+  },
+  tiebreakPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,212,121,0.5)",
+    backgroundColor: "rgba(255,212,121,0.12)",
+  },
+  tiebreakText: {
+    fontFamily: "Unbounded_700Bold",
+    fontSize: 10,
+    letterSpacing: 1,
+    color: "#FFD479",
+  },
   advanceRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -455,5 +462,22 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#FFFFFF",
     letterSpacing: 0.2,
+  },
+  devSkip: {
+    position: "absolute",
+    bottom: 12,
+    right: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.22)",
+    backgroundColor: "rgba(11,15,20,0.85)",
+  },
+  devSkipText: {
+    fontFamily: "Unbounded_500Medium",
+    fontSize: 10,
+    letterSpacing: 0.5,
+    color: "rgba(255,255,255,0.6)",
   },
 });

@@ -30,9 +30,10 @@ import { LavaBackdrop } from "@/components/lava-backdrop";
 import { posterUri, searchMovies } from "@/lib/tmdb";
 import {
   type Movie,
-  toggleMovie,
+  setSelection,
   useMovieSelection,
 } from "@/state/movie-selection";
+import { useRoom } from "@/state/room";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -77,16 +78,21 @@ function SpringButton({
 function MovieRow({
   movie,
   selected,
+  locked,
   onPress,
 }: {
   movie: Movie;
   selected: boolean;
+  locked: boolean;
   onPress: () => void;
 }) {
   const uri = posterUri(movie.posterPath);
 
   return (
-    <Pressable style={styles.row} onPress={onPress}>
+    <Pressable
+      style={[styles.row, locked && styles.rowLocked]}
+      onPress={onPress}
+    >
       {uri ? (
         <Image source={{ uri }} style={styles.poster} contentFit="cover" />
       ) : (
@@ -108,9 +114,11 @@ function MovieRow({
       </View>
 
       <SymbolView
-        name={selected ? "checkmark.circle.fill" : "circle"}
+        name={
+          selected ? "checkmark.circle.fill" : locked ? "lock.fill" : "circle"
+        }
         tintColor={selected ? ACCENT : "rgba(255,255,255,0.30)"}
-        size={26}
+        size={selected || !locked ? 26 : 20}
         weight="semibold"
       />
     </Pressable>
@@ -121,9 +129,14 @@ export default function Movies() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  const selection = useMovieSelection();
-  const count = selection.length;
-  const selectedIds = new Set(selection.map((m) => m.id));
+  const committed = useMovieSelection();
+  const room = useRoom();
+  const cap =
+    room && room.config.source === "players" ? room.config.perPlayer : Infinity;
+  const [draft, setDraft] = useState<Movie[]>(() => committed);
+  const count = draft.length;
+  const atCap = count >= cap;
+  const selectedIds = new Set(draft.map((m) => m.id));
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Movie[]>([]);
@@ -166,24 +179,43 @@ export default function Movies() {
 
   const onBack = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelection(draft);
     router.back();
   };
 
   const onDone = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSelection(draft);
     router.back();
   };
 
   const onToggle = (movie: Movie) => {
+    const selected = draft.some((m) => m.id === movie.id);
+    if (!selected && atCap) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      return;
+    }
     Haptics.selectionAsync();
-    toggleMovie(movie);
+    setDraft((prev) =>
+      prev.some((m) => m.id === movie.id)
+        ? prev.filter((m) => m.id !== movie.id)
+        : [...prev, movie],
+    );
   };
 
   const tagline =
-    count === 0 ? "Search and pick your movies." : `${count} selected`;
+    count === 0
+      ? cap === Infinity
+        ? "Search and pick your movies."
+        : `Pick up to ${cap} movies.`
+      : cap === Infinity
+        ? `${count} selected`
+        : atCap
+          ? `Limit reached · ${count} of ${cap}`
+          : `${count} of ${cap} picked`;
   const doneLabel = count === 0 ? "Done" : `Done · ${count}`;
   const hasQuery = query.trim().length > 0;
-  const data = hasQuery ? results : selection;
+  const data = hasQuery ? results : draft;
 
   return (
     <View style={styles.root}>
@@ -237,6 +269,7 @@ export default function Movies() {
             <MovieRow
               movie={item}
               selected={selectedIds.has(item.id)}
+              locked={atCap && !selectedIds.has(item.id)}
               onPress={() => onToggle(item)}
             />
           )}
@@ -347,6 +380,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 14,
     paddingVertical: 10,
+  },
+  rowLocked: {
+    opacity: 0.4,
   },
   poster: {
     width: 52,

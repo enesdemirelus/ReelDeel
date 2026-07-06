@@ -8,9 +8,11 @@ import {
 } from "@expo-google-fonts/unbounded";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+
+import { ensureAuth } from "@/lib/firebase";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -22,12 +24,21 @@ export default function RootLayout() {
     Unbounded_700Bold,
     Unbounded_800ExtraBold,
   });
+  const [authReady, setAuthReady] = useState(false);
 
   useEffect(() => {
-    if (fontsLoaded) SplashScreen.hideAsync();
-  }, [fontsLoaded]);
+    ensureAuth()
+      .then(() => setAuthReady(true))
+      .catch(() => setAuthReady(true));
+  }, []);
 
-  if (!fontsLoaded) return null;
+  const ready = fontsLoaded && authReady;
+
+  useEffect(() => {
+    if (ready) SplashScreen.hideAsync();
+  }, [ready]);
+
+  if (!ready) return null;
 
   return (
     // GestureHandlerRootView must wrap the app for react-native-gesture-handler

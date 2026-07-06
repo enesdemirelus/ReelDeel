@@ -28,13 +28,17 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LavaBackdrop } from "@/components/lava-backdrop";
 import { EdgeBlur } from "@/components/ui/edge-blur";
 import { GlassField } from "@/components/ui/glass-field";
+import {
+  SegmentedControl,
+  type SegmentOption,
+} from "@/components/ui/segmented-control";
 import { SelectCards, type SelectOption } from "@/components/ui/select-cards";
 import { SettingBlock } from "@/components/ui/setting-block";
 import { Stepper } from "@/components/ui/stepper";
 import { Toggle } from "@/components/ui/toggle";
 import { posterUri } from "@/lib/tmdb";
 import { removeMovie, useMovieSelection } from "@/state/movie-selection";
-import { initRoom } from "@/state/room";
+import { createRoom } from "@/state/room";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -64,6 +68,22 @@ const MODE_OPTIONS: SelectOption<Mode>[] = [
     icon: "crown.fill",
   },
 ];
+
+const LOBBY_OPTIONS: SegmentOption<string>[] = [
+  { value: "30", label: "30s" },
+  { value: "60", label: "1m" },
+  { value: "120", label: "2m" },
+  { value: "180", label: "3m" },
+  { value: "300", label: "5m" },
+];
+
+function formatLobby(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  if (mins === 0) return `${secs} sec`;
+  if (secs === 0) return mins === 1 ? "1 min" : `${mins} min`;
+  return `${mins}m ${secs}s`;
+}
 
 const SOURCE_OPTIONS: SelectOption<Source>[] = [
   {
@@ -124,7 +144,9 @@ export default function Create() {
   const [mode, setMode] = useState<Mode>("bracket");
   const [source, setSource] = useState<Source>("players");
   const [perPlayer, setPerPlayer] = useState(3);
+  const [lobbySeconds, setLobbySeconds] = useState(60);
   const [anonymous, setAnonymous] = useState(false);
+  const [busy, setBusy] = useState(false);
   const movies = useMovieSelection();
 
   const headerZoneH = insets.top + 172;
@@ -172,18 +194,24 @@ export default function Create() {
     setAnonymous((prev) => !prev);
   };
 
-  const onCreate = () => {
+  const onCreate = async () => {
+    if (busy) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    initRoom({
-      role: "host",
-      name,
-      mode,
-      source,
-      anonymous,
-      perPlayer,
-      seedPool: source === "host" ? movies : [],
-    });
-    router.push("/lobby");
+    setBusy(true);
+    try {
+      await createRoom({
+        name,
+        mode,
+        source,
+        anonymous,
+        perPlayer,
+        lobbySeconds,
+        seedPool: source === "host" ? movies : [],
+      });
+      router.push("/lobby");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -257,6 +285,17 @@ export default function Create() {
                 <Toggle value={anonymous} onValueChange={onToggleAnonymous} />
               </View>
             </Pressable>
+
+            <SettingBlock
+              label="Lobby timer"
+              caption={`Players get ${formatLobby(lobbySeconds)} to join before the match starts.`}
+            >
+              <SegmentedControl
+                options={LOBBY_OPTIONS}
+                value={String(lobbySeconds)}
+                onChange={(next) => setLobbySeconds(Number(next))}
+              />
+            </SettingBlock>
 
             {source === "players" ? (
               <Animated.View entering={FadeInDown.springify().damping(18)}>
@@ -405,7 +444,7 @@ export default function Create() {
                 { paddingBottom: insets.bottom + 16 },
               ]}
             >
-              {ready ? (
+              {ready && !busy ? (
                 <SpringButton onPress={onCreate} style={styles.signupButton}>
                   <Text style={styles.signupLabel}>Create Room</Text>
                 </SpringButton>
@@ -413,7 +452,9 @@ export default function Create() {
                 <View
                   style={[styles.signupButton, styles.signupButtonDisabled]}
                 >
-                  <Text style={styles.signupLabel}>Create Room</Text>
+                  <Text style={styles.signupLabel}>
+                    {busy ? "Creating…" : "Create Room"}
+                  </Text>
                 </View>
               )}
             </View>
