@@ -1,7 +1,7 @@
 import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SymbolView } from "expo-symbols";
 import { type ReactNode, useState } from "react";
@@ -38,7 +38,7 @@ import { Stepper } from "@/components/ui/stepper";
 import { Toggle } from "@/components/ui/toggle";
 import { posterUri } from "@/lib/tmdb";
 import { removeMovie, useMovieSelection } from "@/state/movie-selection";
-import { createRoom } from "@/state/room";
+import { createRoom, rematchRoom, useRoom } from "@/state/room";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -148,12 +148,26 @@ export default function Create() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  const [name, setName] = useState("");
-  const [mode, setMode] = useState<Mode>("bracket");
-  const [source, setSource] = useState<Source>("players");
-  const [perPlayer, setPerPlayer] = useState(3);
+  const { rematch } = useLocalSearchParams<{ rematch?: string }>();
+  const isRematch = rematch === "1";
+  const room = useRoom();
+
+  const [name, setName] = useState(() =>
+    isRematch && room ? room.config.name : "",
+  );
+  const [mode, setMode] = useState<Mode>(() =>
+    isRematch && room ? room.config.mode : "bracket",
+  );
+  const [source, setSource] = useState<Source>(() =>
+    isRematch && room ? room.config.source : "players",
+  );
+  const [perPlayer, setPerPlayer] = useState(() =>
+    isRematch && room ? room.config.perPlayer : 3,
+  );
   const [lobbySeconds, setLobbySeconds] = useState(60);
-  const [anonymous, setAnonymous] = useState(false);
+  const [anonymous, setAnonymous] = useState(() =>
+    isRematch && room ? room.config.anonymous : false,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const movies = useMovieSelection();
@@ -209,19 +223,35 @@ export default function Create() {
     setBusy(true);
     setError(null);
     try {
-      await createRoom({
-        name,
-        mode,
-        source,
-        anonymous,
-        perPlayer,
-        lobbySeconds,
-        seedPool: source === "host" ? movies : [],
-      });
-      router.push("/lobby");
+      if (isRematch) {
+        await rematchRoom({
+          name,
+          mode,
+          source,
+          anonymous,
+          perPlayer,
+          lobbySeconds,
+        });
+        router.back();
+      } else {
+        await createRoom({
+          name,
+          mode,
+          source,
+          anonymous,
+          perPlayer,
+          lobbySeconds,
+          seedPool: source === "host" ? movies : [],
+        });
+        router.push("/lobby");
+      }
     } catch {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setError("Couldn't create the room. Check your connection and try again.");
+      setError(
+        isRematch
+          ? "Couldn't start the rematch. Try again."
+          : "Couldn't create the room. Check your connection and try again.",
+      );
     } finally {
       setBusy(false);
     }
@@ -434,10 +464,12 @@ export default function Create() {
                 style={[styles.title, titleStyle]}
                 allowFontScaling={false}
               >
-                Create a Room
+                {isRematch ? "Play Again" : "Create a Room"}
               </Animated.Text>
               <Animated.Text style={[styles.tagline, taglineStyle]}>
-                Set up your movie night.
+                {isRematch
+                  ? `Same room, code ${room?.config.code ?? ""} — set up the next game.`
+                  : "Set up your movie night."}
               </Animated.Text>
             </View>
           </View>
@@ -485,7 +517,15 @@ export default function Create() {
               <SpringButton
                 onPress={onCreate}
                 disabled={!ready || busy}
-                accessibilityLabel={busy ? "Creating room" : "Create room"}
+                accessibilityLabel={
+                  isRematch
+                    ? busy
+                      ? "Starting rematch"
+                      : "Start rematch"
+                    : busy
+                      ? "Creating room"
+                      : "Create room"
+                }
                 style={
                   ready && !busy
                     ? styles.signupButton
@@ -493,7 +533,13 @@ export default function Create() {
                 }
               >
                 <Text style={styles.signupLabel}>
-                  {busy ? "Creating…" : "Create Room"}
+                  {isRematch
+                    ? busy
+                      ? "Starting…"
+                      : "Start Rematch"
+                    : busy
+                      ? "Creating…"
+                      : "Create Room"}
                 </Text>
               </SpringButton>
               {!ready && !busy ? (

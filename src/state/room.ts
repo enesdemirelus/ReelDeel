@@ -1,6 +1,7 @@
 import {
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -8,12 +9,14 @@ import {
   runTransaction,
   serverTimestamp,
   setDoc,
+  Timestamp,
   updateDoc,
-  type Timestamp,
+  writeBatch,
 } from "firebase/firestore";
 import { useSyncExternalStore } from "react";
 
 import { db, ensureAuth } from "@/lib/firebase";
+import { saveRoomVisit } from "@/lib/history";
 import {
   bracketDuelAt,
   bracketPlaylist,
@@ -89,7 +92,14 @@ const HOST_STALE_MS = 20000;
 const WRITE_RETRIES = 3;
 const RETRY_MS = 1500;
 export const RESOLVE_GRACE_MS = 750;
+export const PLAYIN_SECONDS = 7;
+export const PLAYIN_MAX_SLOTS = 8;
+const ROOM_TTL_MS = 2 * 60 * 60 * 1000;
 const YOU_HOST_ID = "you-host";
+
+function expireStamp(): Timestamp {
+  return Timestamp.fromMillis(Date.now() + ROOM_TTL_MS);
+}
 const YOU_PLAYER_ID = "you-player";
 
 type Kind = "local" | "live";
@@ -218,9 +228,10 @@ function stopHostTimers() {
 
 function beat() {
   if (!isHostLive() || !liveCode) return;
-  updateDoc(doc(db, "rooms", liveCode), { hostBeatAt: serverTimestamp() }).catch(
-    () => {},
-  );
+  updateDoc(doc(db, "rooms", liveCode), {
+    hostBeatAt: serverTimestamp(),
+    expireAt: expireStamp(),
+  }).catch(() => {});
 }
 
 async function maybeTakeover() {
@@ -339,6 +350,10 @@ function attachLive(code: string) {
 
   unsubs.push(
     onSnapshot(doc(db, "rooms", code), (snap) => {
+      if (!snap.exists() && kind === "live" && liveCode === code && roomDoc) {
+        roomGone();
+        return;
+      }
       roomDoc = (snap.data() as RoomDoc | undefined) ?? null;
       rebuildLive();
     }),
@@ -424,17 +439,21 @@ export async function createRoom(opts: CreateOptions): Promise<string> {
         code: candidate,
         createdAt: serverTimestamp(),
         hostBeatAt: serverTimestamp(),
+        expireAt: expireStamp(),
       });
       tx.set(doc(db, "rooms", candidate, "players", uid), {
         id: uid,
         name,
         joinedAt: serverTimestamp(),
+        expireAt: expireStamp(),
       });
       return true;
     });
     if (created) record = { ...base, code: candidate };
   }
   if (!record) throw new Error("code-unavailable");
+
+  void saveRoomVisit({ code: record.code, roomName: record.name, myName: name });
 
   kind = "live";
   myUid = uid;
@@ -475,7 +494,10 @@ export async function joinRoom(code: string, name: string): Promise<void> {
     id: uid,
     name: cleanName,
     joinedAt: serverTimestamp(),
+    expireAt: expireStamp(),
   });
+
+  void saveRoomVisit({ code: upper, roomName: room.name, myName: cleanName });
 
   roomDoc = room;
   playerDocs = [{ id: uid, name: cleanName }];
@@ -489,7 +511,7 @@ export function syncMyMovies(movies: Movie[]) {
   if (kind !== "live" || !liveCode || !myUid) return;
   const ref = doc(db, "rooms", liveCode, "pool", myUid);
   if (movies.length > 0) {
-    setDoc(ref, { addedBy: myUid, movies }).catch(() => {});
+    setDoc(ref, { addedBy: myUid, movies, expireAt: expireStamp() }).catch(() => {});
   } else {
     deleteDoc(ref).catch(() => {});
   }
@@ -731,6 +753,7 @@ function castVoteAttempt(choice: Winner, step: number, attempt: number) {
     step,
     uid,
     choice,
+    expireAt: expireStamp(),
   }).catch(() => {
     scheduleRetry(attempt, () => castVoteAttempt(choice, step, attempt + 1), "castVote");
   });
@@ -741,12 +764,21 @@ export function openMatch() {
   openMatchAttempt(roomDoc.game.step, 0);
 }
 
+function matchSeconds(g: StoredGame, step: number): number {
+  if (g.mode !== "bracket" || g.bracketSize <= PLAYIN_MAX_SLOTS) return VOTE_SECONDS;
+  const playlist = bracketPlaylist(g.bracketSize, g.roundCount);
+  const entry = playlist[step];
+  if (!entry) return VOTE_SECONDS;
+  const slots = g.bracketSize / Math.pow(2, entry[0]);
+  return slots > PLAYIN_MAX_SLOTS ? PLAYIN_SECONDS : VOTE_SECONDS;
+}
+
 function openMatchAttempt(step: number, attempt: number) {
   if (!isHostLive() || !roomDoc?.game || !liveCode) return;
   const g = roomDoc.game;
   if (g.phase !== "playing" || g.step !== step || g.results[step] != null) return;
   updateDoc(doc(db, "rooms", liveCode), {
-    "game.matchEndsAt": Date.now() + VOTE_SECONDS * 1000,
+    "game.matchEndsAt": Date.now() + matchSeconds(g, step) * 1000,
   }).catch(() => {
     scheduleRetry(attempt, () => openMatchAttempt(step, attempt + 1), "openMatch");
   });
@@ -864,18 +896,90 @@ function advanceAttempt(step: number, attempt: number) {
   }
 }
 
-export function leaveRoom() {
+function roomGone() {
   clearSim();
-  if (kind === "live" && liveCode && myUid) {
-    deleteDoc(doc(db, "rooms", liveCode, "players", myUid)).catch(() => {});
-    deleteDoc(doc(db, "rooms", liveCode, "pool", myUid)).catch(() => {});
-  }
   detachLive();
   kind = "local";
   liveCode = null;
   myUid = null;
   state = null;
   emit();
+}
+
+export function leaveRoom() {
+  clearSim();
+  if (kind === "live" && liveCode && myUid) {
+    deleteDoc(doc(db, "rooms", liveCode, "players", myUid)).catch(() => {});
+    deleteDoc(doc(db, "rooms", liveCode, "pool", myUid)).catch(() => {});
+  }
+  roomGone();
+}
+
+export async function endRoom(): Promise<void> {
+  if (!isHostLive() || !liveCode) return;
+  const code = liveCode;
+  const batch = writeBatch(db);
+  for (const p of playerDocs) batch.delete(doc(db, "rooms", code, "players", p.id));
+  for (const d of poolDocs) batch.delete(doc(db, "rooms", code, "pool", d.addedBy));
+  for (const v of voteDocs)
+    batch.delete(doc(db, "rooms", code, "votes", `${v.step}__${v.uid}`));
+  batch.delete(doc(db, "rooms", code));
+  try {
+    await batch.commit();
+  } catch {}
+  roomGone();
+}
+
+export async function transferHostAndLeave(): Promise<void> {
+  if (!isHostLive() || !liveCode || !myUid) {
+    leaveRoom();
+    return;
+  }
+  const successor = [...playerDocs]
+    .filter((p) => p.id !== myUid)
+    .sort((a, b) => (a.joinedAt?.seconds ?? 0) - (b.joinedAt?.seconds ?? 0))[0];
+  if (!successor) {
+    await endRoom();
+    return;
+  }
+  try {
+    await updateDoc(doc(db, "rooms", liveCode), {
+      hostId: successor.id,
+      hostBeatAt: serverTimestamp(),
+      expireAt: expireStamp(),
+    });
+  } catch {}
+  leaveRoom();
+}
+
+export type RematchOptions = {
+  name?: string;
+  mode?: Mode;
+  source?: Source;
+  anonymous?: boolean;
+  perPlayer?: number;
+  lobbySeconds?: number;
+};
+
+export async function rematchRoom(opts: RematchOptions): Promise<void> {
+  if (!isHostLive() || !liveCode || !roomDoc) return;
+  const code = liveCode;
+  const batch = writeBatch(db);
+  for (const v of voteDocs)
+    batch.delete(doc(db, "rooms", code, "votes", `${v.step}__${v.uid}`));
+  batch.update(doc(db, "rooms", code), {
+    name: normalizeName(opts.name, roomDoc.name, 40),
+    mode: opts.mode ?? roomDoc.mode,
+    source: opts.source ?? roomDoc.source,
+    anonymous: opts.anonymous ?? roomDoc.anonymous,
+    perPlayer: opts.perPlayer ?? roomDoc.perPlayer,
+    status: "lobby",
+    game: deleteField(),
+    endsAt: Date.now() + clampLobbySeconds(opts.lobbySeconds ?? LOBBY_SECONDS) * 1000,
+    hostBeatAt: serverTimestamp(),
+    expireAt: expireStamp(),
+  });
+  await batch.commit();
 }
 
 export function useRoom(): RoomState | null {

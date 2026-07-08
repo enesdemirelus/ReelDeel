@@ -1,8 +1,9 @@
+import { useRouter } from "expo-router";
 import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { SymbolView } from "expo-symbols";
 import { useEffect, useRef, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Alert, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -15,15 +16,18 @@ import { DuelVote } from "@/components/bracket/duel-vote";
 import { LavaBackdrop } from "@/components/lava-backdrop";
 import { SpringButton } from "@/components/ui/spring-button";
 import { kothStateAt, type Winner } from "@/lib/game";
+import { markWinner } from "@/lib/history";
 import { posterUri } from "@/lib/tmdb";
 import type { Movie } from "@/state/movie-selection";
 import {
   advanceAfterReveal,
   castVote,
+  endRoom,
   openMatch,
   REVEAL_MS,
   RESOLVE_GRACE_MS,
   resolveCurrent,
+  transferHostAndLeave,
   useRoom,
 } from "@/state/room";
 
@@ -35,6 +39,7 @@ const ADVANCE_MS = 1400;
 
 export function KothGame({ pool, onExit }: { pool: Movie[]; onExit: () => void }) {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const room = useRoom();
   const game = room?.game ?? null;
   const isHost = room?.config.role === "host";
@@ -106,11 +111,53 @@ export function KothGame({ pool, onExit }: { pool: Movie[]; onExit: () => void }
     return () => clearTimeout(t);
   }, [phase, animResolved]);
 
+  useEffect(() => {
+    if (sharedPhase !== "done" || !room || !game) return;
+    const seeds = game.seeds as Movie[];
+    if (seeds.length === 0) return;
+    const { king } = kothStateAt(seeds, game.results, game.results.length);
+    if (king?.title) {
+      void markWinner(room.config.code, king.title, king.posterPath ?? null);
+    }
+  }, [sharedPhase, room, game]);
+
   const onSeeded = () => setPhase("intro");
 
   const onBack = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onExit();
+    if (isHost) {
+      Alert.alert(
+        "Leave the game?",
+        "You're the host. Hand the room to another player, or end it for everyone.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Transfer host & leave",
+            onPress: () => {
+              void transferHostAndLeave();
+              onExit();
+            },
+          },
+          {
+            text: "End room for everyone",
+            style: "destructive",
+            onPress: () => {
+              void endRoom();
+              onExit();
+            },
+          },
+        ],
+      );
+      return;
+    }
+    Alert.alert(
+      "Leave the game?",
+      "You can rejoin with the code if the room is still open.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Leave", style: "destructive", onPress: () => onExit() },
+      ],
+    );
   };
 
   if (!game || game.seeds.length === 0) {
@@ -230,10 +277,40 @@ export function KothGame({ pool, onExit }: { pool: Movie[]; onExit: () => void }
           style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}
           pointerEvents="box-none"
         >
-          <SpringButton onPress={onBack} style={styles.exit} accessibilityLabel="Back to home">
-            <SymbolView name="house.fill" tintColor="#0B0F14" size={16} weight="bold" />
-            <Text style={styles.exitText}>Back to home</Text>
-          </SpringButton>
+          {isHost ? (
+            <View style={styles.footerStack}>
+              <SpringButton
+                onPress={() =>
+                  router.push({ pathname: "/create", params: { rematch: "1" } })
+                }
+                style={styles.exit}
+                accessibilityLabel="Play again"
+              >
+                <SymbolView name="arrow.clockwise" tintColor="#0B0F14" size={16} weight="bold" />
+                <Text style={styles.exitText}>Play again</Text>
+              </SpringButton>
+              <SpringButton
+                onPress={() => {
+                  void endRoom();
+                  onExit();
+                }}
+                style={styles.endRoom}
+                accessibilityLabel="End room"
+              >
+                <Text style={styles.endRoomText}>End room</Text>
+              </SpringButton>
+            </View>
+          ) : (
+            <View style={styles.footerStack}>
+              <View style={styles.waitPill}>
+                <Text style={styles.waitText}>Waiting for the host…</Text>
+              </View>
+              <SpringButton onPress={onBack} style={styles.exit} accessibilityLabel="Back to home">
+                <SymbolView name="house.fill" tintColor="#0B0F14" size={16} weight="bold" />
+                <Text style={styles.exitText}>Back to home</Text>
+              </SpringButton>
+            </View>
+          )}
         </View>
       ) : null}
 
@@ -359,6 +436,41 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: "center",
     zIndex: 20,
+  },
+  footerStack: {
+    alignItems: "center",
+    gap: 12,
+  },
+  waitPill: {
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  waitText: {
+    fontFamily: "Unbounded_600SemiBold",
+    fontSize: 13,
+    color: "rgba(255,255,255,0.7)",
+    letterSpacing: 0.5,
+  },
+  endRoom: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 54,
+    paddingHorizontal: 28,
+    borderRadius: 999,
+    backgroundColor: "transparent",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,99,99,0.5)",
+  },
+  endRoomText: {
+    fontFamily: "Unbounded_700Bold",
+    fontSize: 15,
+    color: "#FFB3B3",
   },
   exit: {
     flexDirection: "row",

@@ -4,12 +4,21 @@ import { type ComponentProps } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   interpolate,
+  type SharedValue,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
 } from "react-native-reanimated";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+function springTo(
+  sv: SharedValue<number>,
+  to: number,
+  cfg: { damping: number; stiffness: number },
+) {
+  sv.value = withSpring(to, cfg);
+}
 
 type SymbolName = ComponentProps<typeof SymbolView>["name"];
 
@@ -64,12 +73,8 @@ function Card<T extends string>({
   return (
     <AnimatedPressable
       onPress={onPress}
-      onPressIn={() =>
-        (pressed.value = withSpring(1, { damping: 22, stiffness: 420 }))
-      }
-      onPressOut={() =>
-        (pressed.value = withSpring(0, { damping: 16, stiffness: 300 }))
-      }
+      onPressIn={() => springTo(pressed, 1, { damping: 22, stiffness: 420 })}
+      onPressOut={() => springTo(pressed, 0, { damping: 16, stiffness: 300 })}
       style={[styles.card, selected && styles.cardSelected, style]}
     >
       {option.icon ? (

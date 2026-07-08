@@ -3,7 +3,7 @@ import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SymbolView } from "expo-symbols";
 import { useEffect } from "react";
-import { ScrollView, Share, StyleSheet, Text, View } from "react-native";
+import { Alert, ScrollView, Share, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -18,10 +18,12 @@ import { Roster } from "@/components/lobby/roster";
 import { LavaBackdrop } from "@/components/lava-backdrop";
 import { removeMovie, useMovieSelection } from "@/state/movie-selection";
 import {
+  endRoom,
   leaveRoom,
   type PoolMovie,
   startGame,
   syncMyMovies,
+  transferHostAndLeave,
   useRoom,
 } from "@/state/room";
 
@@ -82,7 +84,35 @@ export default function Lobby() {
 
   const onBack = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.back();
+    if (isHost) {
+      Alert.alert(
+        "Leave the room?",
+        "You're the host. Hand the room to another player, or end it for everyone.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Transfer host & leave",
+            onPress: () => {
+              void transferHostAndLeave();
+              router.back();
+            },
+          },
+          {
+            text: "End room for everyone",
+            style: "destructive",
+            onPress: () => {
+              void endRoom();
+              router.back();
+            },
+          },
+        ],
+      );
+      return;
+    }
+    Alert.alert("Leave the room?", "You can rejoin later with the code.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Leave", style: "destructive", onPress: () => router.back() },
+    ]);
   };
 
   const onShare = () => {

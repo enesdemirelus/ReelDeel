@@ -200,11 +200,13 @@ Note (2026-07-08): pre-existing (untouched by this sweep) `react-hooks/immutabil
   `src/lib/tmdb.ts:3,29` — `EXPO_PUBLIC_TMDB_API` interpolated into the URL; extractable from any shipped bundle; abuse burns quota / gets key revoked for all users.
   **Fix:** proxy TMDB through a server endpoint (Expo Router API route / Cloud Function) holding the key; or knowingly accept the risk and monitor/rotate.
 
-- [ ] **S.2 (MEDIUM) Rooms, games, and votes are never deleted — unbounded Firestore growth.**
+- [~] **S.2 (MEDIUM) Rooms, games, and votes are never deleted — unbounded Firestore growth.**
+  Fixed: 2026-07-08 (mostly) — `endRoom()` batch-deletes players/pool/votes + room doc (host end-room action, post-game "End room", and host-leave with no successor); `rematchRoom()` deletes stale votes; every write now stamps `expireAt` (now + 2h, refreshed by the host heartbeat) for Firestore TTL. REMAINING MANUAL STEP: enable TTL policies on field `expireAt` for collection groups `rooms`, `players`, `pool`, `votes` in Cloud Console (Firestore → Time-to-live), project `reelduel-enes`. Mark `[x]` once enabled.
   `room.ts:688-700` — `leaveRoom` deletes only the caller's player+pool docs. Room doc + entire votes subcollection persist forever; departed-host rooms stay joinable but undriveable.
   **Fix:** host-leave path recursively deletes the room (batched client delete or Cloud Function); delete a step's vote docs after resolution. Distinguish host-abandon from player-leave.
 
-- [ ] **S.3 (MEDIUM) Back gesture from lobby silently destroys membership / abandons room.**
+- [x] **S.3 (MEDIUM) Back gesture from lobby silently destroys membership / abandons room.**
+  Fixed: 2026-07-08 — lobby and both in-game screens confirm before leaving. Players get Leave/Cancel; hosts choose "Transfer host & leave" (`transferHostAndLeave()` — instant handoff to earliest-joined player; rules now allow host-initiated hostId change) or "End room for everyone" (`endRoom()`). Note: an OS back-swipe still bypasses the dialog (no navigation guard) — chevron is the primary path.
   `lobby.tsx:55` — `useEffect(() => () => leaveRoom(), [])` fires on ANY unmount (chevron, hardware back, edge swipe). Host's just-created room abandoned with zero warning.
   **Fix:** confirm before leaving (especially host: "leaving ends the room"); separate intentional leave from incidental unmount.
 
@@ -221,6 +223,18 @@ Note (2026-07-08): pre-existing (untouched by this sweep) `react-hooks/immutabil
   **Fix:** leave but mark the exception deliberate, or pre-tile grain into a full-screen asset and use expo-image. No functional change required.
 
 ---
+
+## Feature additions (2026-07-08, post-audit)
+
+Built after the audit clusters; documented so future sessions know these exist:
+
+- **Host transfer & end-room** — `transferHostAndLeave()` / `endRoom()` in room.ts, wired to leave dialogs in lobby.tsx, bracket-game.tsx, koth-game.tsx. Rules host branch permits hostId reassignment by the current host.
+- **Rematch flow** — game-done screen: host gets "Play again" (→ `/create?rematch=1`, create.tsx prefills from `room.config`, submits via `rematchRoom()` keeping code/players/pool, clearing game+votes) and "End room"; non-hosts see "Waiting for the host…" and auto-return to lobby when status flips.
+- **Room-deleted handling** — room.ts `attachLive` detects a deleted room doc and tears down local state (`roomGone()`); lobby redirects home.
+- **Recent rooms** — `src/lib/history.ts` (AsyncStorage, key `reelduel/room-history`, 8 entries): `saveRoomVisit` on create/join, `markWinner` from game-done effects, home screen (index.tsx) shows up to 4 with active-check + one-tap rejoin (lobby-status rooms only; mid-game rejoin not supported — rules require status 'lobby' for player create).
+- **Winner history** — each device stores winner title/poster per room; shown on home rows.
+- **Play-in rounds (bracket > 8 movies)** — rounds with more than 8 slots vote on a 7s timer (`PLAYIN_SECONDS`, `matchSeconds()` in room.ts); bracket-game.tsx hides BracketView during play-ins, shows "PLAY-IN — challenge X of Y", then runs the bracket seeding reveal when the field reaches 8.
+- **TTL groundwork** — `expireAt` stamped on rooms/players/pool/votes writes; see S.2 for the pending console step.
 
 ## Refuted claims (do NOT re-report these)
 
