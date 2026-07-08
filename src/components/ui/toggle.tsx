@@ -13,9 +13,11 @@ import Animated, {
 export function Toggle({
   value,
   onValueChange,
+  accessibilityLabel,
 }: {
   value: boolean;
   onValueChange: (next: boolean) => void;
+  accessibilityLabel?: string;
 }): React.JSX.Element {
   const progress = useSharedValue(value ? 1 : 0);
 
@@ -49,7 +51,13 @@ export function Toggle({
   };
 
   return (
-    <Pressable onPress={press} hitSlop={8}>
+    <Pressable
+      onPress={press}
+      hitSlop={8}
+      accessibilityRole="switch"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ checked: value }}
+    >
       <Animated.View style={[styles.track, trackStyle]}>
         <Animated.View style={[styles.knob, knobStyle]} />
       </Animated.View>

@@ -136,7 +136,11 @@ export default function Lobby() {
               {config.name}
             </Text>
             {isHost ? (
-              <SpringButton onPress={onShare} style={styles.codePill}>
+              <SpringButton
+                onPress={onShare}
+                style={styles.codePill}
+                accessibilityLabel={`Share room code ${config.code}`}
+              >
                 <Text style={styles.codeLabel}>CODE</Text>
                 <Text style={styles.codeValue} allowFontScaling={false}>
                   {config.code}
@@ -208,6 +212,7 @@ export default function Lobby() {
         <SpringButton
           onPress={onBack}
           style={{ ...styles.backButton, top: insets.top + 12 }}
+          accessibilityLabel="Go back"
         >
           <SymbolView
             name="chevron.left"

@@ -69,6 +69,7 @@ export default function Username() {
         <View style={styles.content} pointerEvents="box-none">
           <SpringButton
             onPress={onBack}
+            accessibilityLabel="Go back"
             style={{ ...styles.backButton, top: insets.top + 12 }}
           >
             <SymbolView
@@ -128,17 +129,22 @@ export default function Username() {
                   <Text style={styles.errorText}>{error}</Text>
                 </View>
               ) : null}
-              {ready && !busy ? (
-                <SpringButton onPress={onContinue} style={styles.signupButton}>
-                  <Text style={styles.signupLabel}>Enter Lobby</Text>
-                </SpringButton>
-              ) : (
-                <View style={[styles.signupButton, styles.signupButtonDisabled]}>
-                  <Text style={styles.signupLabel}>
-                    {busy ? "Joining…" : "Enter Lobby"}
-                  </Text>
-                </View>
-              )}
+              <SpringButton
+                onPress={onContinue}
+                disabled={!ready || busy}
+                accessibilityLabel={busy ? "Joining room" : "Enter lobby"}
+                style={[
+                  styles.signupButton,
+                  (!ready || busy) && styles.signupButtonDisabled,
+                ]}
+              >
+                <Text style={styles.signupLabel}>
+                  {busy ? "Joining…" : "Enter Lobby"}
+                </Text>
+              </SpringButton>
+              {!ready && !busy ? (
+                <Text style={styles.footerHint}>Enter your name to continue</Text>
+              ) : null}
             </View>
           </Animated.View>
         </View>
@@ -274,5 +280,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     lineHeight: 18,
+  },
+  footerHint: {
+    marginTop: 10,
+    textAlign: "center",
+    fontFamily: "Unbounded_400Regular",
+    fontSize: 11,
+    color: "rgba(255,255,255,0.45)",
+    letterSpacing: 0.2,
   },
 });

@@ -51,10 +51,12 @@ function SpringButton({
   onPress,
   style,
   children,
+  accessibilityLabel,
 }: {
   onPress: () => void;
   style: ViewStyle;
   children: ReactNode;
+  accessibilityLabel?: string;
 }) {
   const pressed = useSharedValue(0);
 
@@ -66,6 +68,8 @@ function SpringButton({
   return (
     <AnimatedPressable
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       onPressIn={() => springTo(pressed, 1, { damping: 22, stiffness: 420 })}
       onPressOut={() => springTo(pressed, 0, { damping: 16, stiffness: 300 })}
       style={[style, press]}
@@ -92,6 +96,9 @@ function MovieRow({
     <Pressable
       style={[styles.row, locked && styles.rowLocked]}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${movie.title}${movie.year ? `, ${movie.year}` : ""}`}
+      accessibilityState={{ selected }}
     >
       {uri ? (
         <Image source={{ uri }} style={styles.poster} contentFit="cover" />
@@ -226,6 +233,7 @@ export default function Movies() {
       <View style={styles.content}>
         <SpringButton
           onPress={onBack}
+          accessibilityLabel="Go back"
           style={{ ...styles.backButton, top: insets.top + 12 }}
         >
           <BlurView tint="dark" intensity={40} style={StyleSheet.absoluteFill} />
@@ -298,7 +306,11 @@ export default function Movies() {
       >
         <EdgeBlur edge="bottom" intensity={64} />
         <View style={[styles.footerInner, { paddingBottom: insets.bottom + 16 }]}>
-          <SpringButton onPress={onDone} style={styles.doneButton}>
+          <SpringButton
+            onPress={onDone}
+            accessibilityLabel="Done"
+            style={styles.doneButton}
+          >
             <Text style={styles.doneLabel}>{doneLabel}</Text>
           </SpringButton>
         </View>

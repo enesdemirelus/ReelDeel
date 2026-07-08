@@ -2,7 +2,7 @@ import { Image } from "expo-image";
 import * as Haptics from "expo-haptics";
 import { SymbolView } from "expo-symbols";
 import { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { AccessibilityInfo, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   FadeIn,
   FadeInUp,
@@ -107,6 +107,9 @@ function VoteCard({
       <Pressable
         onPress={onPick}
         disabled={revealed}
+        accessibilityRole="button"
+        accessibilityLabel={`Vote for ${movie.title}${movie.year ? `, ${movie.year}` : ""}`}
+        accessibilityState={{ selected: picked, disabled: revealed }}
         style={[
           styles.poster,
           picked && { borderColor: accent, borderWidth: 3 },
@@ -176,6 +179,12 @@ export function DuelVote({
       stiffness: 200,
     });
   }, [counts, total, share]);
+
+  useEffect(() => {
+    if (!revealed || !winner) return;
+    const movie = winner === "left" ? left : right;
+    AccessibilityInfo.announceForAccessibility(`${movie.title} wins this duel`);
+  }, [revealed, winner, left, right]);
 
   const leftPct = total === 0 ? 50 : Math.round((counts.left / total) * 100);
   const winnerMovie = winner === "right" ? right : left;

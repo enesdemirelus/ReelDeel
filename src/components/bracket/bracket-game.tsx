@@ -227,14 +227,14 @@ export function BracketGame({ pool, onExit }: { pool: Movie[]; onExit: () => voi
           style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}
           pointerEvents="box-none"
         >
-          <SpringButton onPress={onBack} style={styles.exit}>
+          <SpringButton onPress={onBack} style={styles.exit} accessibilityLabel="Back to home">
             <SymbolView name="house.fill" tintColor="#0B0F14" size={16} weight="bold" />
             <Text style={styles.exitText}>Back to home</Text>
           </SpringButton>
         </View>
       ) : null}
 
-      <SpringButton onPress={onBack} style={{ ...styles.backButton, top: insets.top + 12 }}>
+      <SpringButton onPress={onBack} style={{ ...styles.backButton, top: insets.top + 12 }} accessibilityLabel="Leave game">
         <SymbolView name="chevron.left" tintColor="#FFFFFF" size={20} weight="semibold" />
       </SpringButton>
 

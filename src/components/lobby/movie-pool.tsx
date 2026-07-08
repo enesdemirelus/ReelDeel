@@ -41,7 +41,11 @@ export function MoviePool({
   return (
     <View style={styles.grid}>
       {canAdd ? (
-        <SpringButton onPress={onAddPress} style={styles.tile}>
+        <SpringButton
+          onPress={onAddPress}
+          style={styles.tile}
+          accessibilityLabel="Add movies"
+        >
           <View style={styles.addTile}>
             <SymbolView name="plus" tintColor="#FFFFFF" size={26} weight="semibold" />
             <Text style={styles.addLabel}>Add</Text>
@@ -84,6 +88,8 @@ export function MoviePool({
                 <Pressable
                   style={styles.posterRemove}
                   onPress={() => onRemove(movie.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${movie.title}`}
                 >
                   <SymbolView
                     name="xmark"

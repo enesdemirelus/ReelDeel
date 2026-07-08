@@ -112,10 +112,14 @@ function SpringButton({
   onPress,
   style,
   children,
+  accessibilityLabel,
+  disabled,
 }: {
   onPress: () => void;
   style: ViewStyle;
   children: ReactNode;
+  accessibilityLabel?: string;
+  disabled?: boolean;
 }) {
   const pressed = useSharedValue(0);
 
@@ -127,6 +131,10 @@ function SpringButton({
   return (
     <AnimatedPressable
       onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled: !!disabled }}
       onPressIn={() => springTo(pressed, 1, { damping: 22, stiffness: 420 })}
       onPressOut={() => springTo(pressed, 0, { damping: 16, stiffness: 300 })}
       style={[style, press]}
@@ -269,7 +277,13 @@ export default function Create() {
               />
             </SettingBlock>
 
-            <Pressable style={styles.anonRow} onPress={onToggleAnonymous}>
+            <Pressable
+              style={styles.anonRow}
+              onPress={onToggleAnonymous}
+              accessibilityRole="switch"
+              accessibilityLabel="Anonymous mode"
+              accessibilityState={{ checked: anonymous }}
+            >
               <View style={styles.anonIcon}>
                 <SymbolView
                   name="eye.slash.fill"
@@ -329,7 +343,13 @@ export default function Create() {
                       : "Add the movies to vote on."
                   }
                 >
-                  <SpringButton onPress={onAddMovies} style={styles.addButton}>
+                  <SpringButton
+                    onPress={onAddMovies}
+                    style={styles.addButton}
+                    accessibilityLabel={
+                      movies.length ? "Add or edit movies" : "Add movies"
+                    }
+                  >
                     <SymbolView
                       name="plus"
                       tintColor="#FFFFFF"
@@ -350,6 +370,8 @@ export default function Create() {
                             key={movie.id}
                             style={styles.poster}
                             onPress={() => onRemoveMovie(movie.id)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Remove ${movie.title}`}
                           >
                             {uri ? (
                               <Image
@@ -422,6 +444,7 @@ export default function Create() {
 
           <SpringButton
             onPress={onBack}
+            accessibilityLabel="Go back"
             style={{ ...styles.backButton, top: insets.top + 12 }}
           >
             <BlurView
@@ -459,19 +482,25 @@ export default function Create() {
                   <Text style={styles.errorText}>{error}</Text>
                 </View>
               ) : null}
-              {ready && !busy ? (
-                <SpringButton onPress={onCreate} style={styles.signupButton}>
-                  <Text style={styles.signupLabel}>Create Room</Text>
-                </SpringButton>
-              ) : (
-                <View
-                  style={[styles.signupButton, styles.signupButtonDisabled]}
-                >
-                  <Text style={styles.signupLabel}>
-                    {busy ? "Creating…" : "Create Room"}
-                  </Text>
-                </View>
-              )}
+              <SpringButton
+                onPress={onCreate}
+                disabled={!ready || busy}
+                accessibilityLabel={busy ? "Creating room" : "Create room"}
+                style={
+                  ready && !busy
+                    ? styles.signupButton
+                    : { ...styles.signupButton, ...styles.signupButtonDisabled }
+                }
+              >
+                <Text style={styles.signupLabel}>
+                  {busy ? "Creating…" : "Create Room"}
+                </Text>
+              </SpringButton>
+              {!ready && !busy ? (
+                <Text style={styles.footerHint}>
+                  Enter a room name to continue
+                </Text>
+              ) : null}
             </View>
           </Animated.View>
         </View>
@@ -702,5 +731,13 @@ const styles = StyleSheet.create({
     color: "#000000",
     fontSize: 15,
     letterSpacing: 0.1,
+  },
+  footerHint: {
+    marginTop: 10,
+    textAlign: "center",
+    fontFamily: "Unbounded_400Regular",
+    fontSize: 11,
+    color: "rgba(255,255,255,0.45)",
+    letterSpacing: 0.2,
   },
 });

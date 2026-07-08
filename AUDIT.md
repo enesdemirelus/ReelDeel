@@ -166,21 +166,27 @@ Notes from the fix (2026-07-08):
 ## Cluster 6 — Accessibility
 
 **Why a cluster:** one sweep adding roles/labels/states; `src/` currently has ZERO accessibility props (grep-confirmed).
-**Cluster status:** OPEN
+**Cluster status:** DONE
 
-- [ ] **6.1 (HIGH) Icon-only buttons have no accessibility labels.**
+Note (2026-07-08): pre-existing (untouched by this sweep) `react-hooks/immutability` eslint errors exist in `src/components/ui/select-cards.tsx:68,71` — React Compiler lint vs reanimated shared-value writes in inline handlers. Unrelated to a11y; fix by moving the writes into a helper like spring-button's `springTo`.
+
+- [x] **6.1 (HIGH) Icon-only buttons have no accessibility labels.**
+  Fixed: 2026-07-08 — shared `SpringButton` (and the local clones in create.tsx/join.tsx/movies.tsx) now set `accessibilityRole="button"` + `accessibilityState({disabled})` and accept `accessibilityLabel`. Labels added: all back chevrons ("Go back" / "Leave game"), share pill (`Share room code {code}`), add-movies controls, remove-movie ×s (`Remove {title}`), exit buttons, join code entry ("Room code" + hint), movie tiles (title+year, selected state), Done.
   Back chevrons (`create.tsx:418`, `join.tsx:329`, `username.tsx:61`, `movies.tsx:227`, `lobby.tsx:206`, `bracket-game.tsx:230`, `koth-game.tsx:233`), share-code pill (`lobby.tsx:137`), remove-movie × (`movie-pool.tsx:84`, `create.tsx:344`), Add tile. `SpringButton` never sets `accessibilityRole`.
   **Fix:** add `accessibilityRole="button"` + descriptive `accessibilityLabel` per control; add role/label passthrough props to `src/components/ui/spring-button.tsx` so callers set them once.
 
-- [ ] **6.2 (HIGH) Vote posters — the core interaction — are invisible to screen readers.**
+- [x] **6.2 (HIGH) Vote posters — the core interaction — are invisible to screen readers.**
+  Fixed: 2026-07-08 — VoteCard Pressable: role button, `Vote for {title}, {year}`, `state={{selected: picked, disabled: revealed}}`; DuelVote announces `"{title} wins this duel"` via `AccessibilityInfo.announceForAccessibility` on reveal.
   `duel-vote.tsx:107` — image-only Pressable, no label/role/state; "YOUR PICK" and win/loss are purely visual.
   **Fix:** `accessibilityRole="button"`, `accessibilityLabel={`Vote for ${movie.title}`}`, `accessibilityState={{ selected: picked, disabled: revealed }}`; announce countdown/result via `AccessibilityInfo.announceForAccessibility` or live region.
 
-- [ ] **6.3 (MEDIUM) Toggle not announced as a switch.**
+- [x] **6.3 (MEDIUM) Toggle not announced as a switch.**
+  Fixed: 2026-07-08 — Toggle sets `role="switch"` + `state({checked})` and accepts a label; create.tsx anonymous row carries `role="switch"`, label "Anonymous mode", checked state on the outer Pressable (the whole row is one switch element).
   `toggle.tsx:51` — bare Pressable, no `role="switch"` / `state={{checked}}`; `create.tsx:284-286` wraps it in `pointerEvents="none"` so it isn't even an independent element.
   **Fix:** role/state/label on the outer row Pressable in create.tsx; add props to Toggle itself.
 
-- [ ] **6.4 (LOW) Disabled primary buttons are dimmed Views with no reason.**
+- [x] **6.4 (LOW) Disabled primary buttons are dimmed Views with no reason.**
+  Fixed: 2026-07-08 — create/username/join footers render one always-present SpringButton with `disabled` + announced disabled state (dimmed style preserved), plus a `footerHint` explaining why ("Enter a room name to continue" / "Enter your name to continue").
   `create.tsx:451` (same pattern in `username.tsx`, `join.tsx`) — swapped for opacity-0.4 View; not focusable, no `accessibilityState={{disabled}}`, no hint why (empty room name etc.).
   **Fix:** keep as Pressable with `disabled` + a11y state; add helper text ("Enter a room name to continue").
 

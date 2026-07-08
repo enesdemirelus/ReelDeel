@@ -11,6 +11,7 @@ import {
   Text,
   TextInput,
   View,
+  type StyleProp,
   type ViewStyle,
 } from "react-native";
 import Animated, {
@@ -64,10 +65,14 @@ function SpringButton({
   onPress,
   style,
   children,
+  disabled,
+  accessibilityLabel,
 }: {
   onPress: () => void;
-  style: ViewStyle;
+  style: StyleProp<ViewStyle>;
   children: ReactNode;
+  disabled?: boolean;
+  accessibilityLabel?: string;
 }) {
   const pressed = useSharedValue(0);
 
@@ -79,6 +84,10 @@ function SpringButton({
   return (
     <AnimatedPressable
       onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled: !!disabled }}
       onPressIn={() => springTo(pressed, 1, { damping: 22, stiffness: 420 })}
       onPressOut={() => springTo(pressed, 0, { damping: 16, stiffness: 300 })}
       style={[style, press]}
@@ -328,6 +337,7 @@ export default function Join() {
         <View style={styles.content} pointerEvents="box-none">
           <SpringButton
             onPress={onBack}
+            accessibilityLabel="Go back"
             style={{ ...styles.backButton, top: insets.top + 12 }}
           >
             <SymbolView
@@ -349,6 +359,9 @@ export default function Join() {
             <Pressable
               style={styles.boxRow}
               onPress={() => inputRef.current?.focus()}
+              accessibilityRole="button"
+              accessibilityLabel="Room code"
+              accessibilityHint="Enter the 5-character room code"
             >
               {SLOTS.map((i) => (
                 <CodeBox
@@ -400,15 +413,18 @@ export default function Join() {
           >
             <EdgeBlur edge="bottom" intensity={64} />
             <View style={[styles.footerInner, { paddingBottom: insets.bottom + 16 }]}>
-              {ready && phase !== "checking" ? (
-                <SpringButton onPress={onJoin} style={styles.signupButton}>
-                  <Text style={styles.signupLabel}>Join Room</Text>
-                </SpringButton>
-              ) : (
-                <View style={[styles.signupButton, styles.signupButtonDisabled]}>
-                  <Text style={styles.signupLabel}>Join Room</Text>
-                </View>
-              )}
+              <SpringButton
+                onPress={onJoin}
+                disabled={!ready || phase === "checking"}
+                accessibilityLabel="Join Room"
+                style={[
+                  styles.signupButton,
+                  (!ready || phase === "checking") &&
+                    styles.signupButtonDisabled,
+                ]}
+              >
+                <Text style={styles.signupLabel}>Join Room</Text>
+              </SpringButton>
             </View>
           </Animated.View>
         </View>

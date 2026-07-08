@@ -24,6 +24,7 @@ export function SpringButton({
   style,
   disabled,
   hitSlop,
+  accessibilityLabel,
   children,
 }: {
   onPress?: () => void;
@@ -31,6 +32,7 @@ export function SpringButton({
   style?: StyleProp<ViewStyle>;
   disabled?: boolean;
   hitSlop?: number;
+  accessibilityLabel?: string;
   children: ReactNode;
 }) {
   const pressed = useSharedValue(0);
@@ -46,6 +48,9 @@ export function SpringButton({
       onLongPress={onLongPress}
       disabled={disabled}
       hitSlop={hitSlop}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled: !!disabled }}
       onPressIn={() => springTo(pressed, 1, { damping: 22, stiffness: 420 })}
       onPressOut={() => springTo(pressed, 0, { damping: 16, stiffness: 300 })}
       style={[style, press]}
