@@ -2,7 +2,6 @@ import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { SymbolView } from "expo-symbols";
 import { type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native";
 import Animated, {
@@ -70,30 +69,11 @@ export default function Index() {
     router.push("/join");
   };
 
-  const onDemo = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push("/demo");
-  };
-
   return (
     <View style={styles.root}>
       <StatusBar style="light" />
 
       <LavaBackdrop />
-
-      {__DEV__ ? (
-        <SpringButton
-          onPress={onDemo}
-          style={{ ...styles.devButton, top: insets.top + 12 }}
-        >
-          <SymbolView
-            name="wrench.and.screwdriver.fill"
-            tintColor="#FFFFFF"
-            size={18}
-            weight="semibold"
-          />
-        </SpringButton>
-      ) : null}
 
       <View style={styles.content} pointerEvents="box-none">
         <View style={[styles.header, { paddingTop: insets.top + 88 }]}>
@@ -147,19 +127,6 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     justifyContent: "space-between",
-  },
-  devButton: {
-    position: "absolute",
-    right: 16,
-    zIndex: 10,
-    width: 44,
-    height: 44,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.22)",
-    backgroundColor: "rgba(255,255,255,0.08)",
   },
   header: {
     alignItems: "center",

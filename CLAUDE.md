@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 @AGENTS.md
 
+**Known issues & fix tracker:** see `AUDIT.md` — a verified audit of security/correctness/UI problems organized into fix clusters with status markers. When fixing anything listed there, flip its `[ ]` to `[x]` and add a `Fixed:` note so progress stays tracked.
+
 ## What ReelDuel is
 
 A social movie-picking party app. A group can't decide what to watch, so one person hosts and the rest join — Kahoot-style, no accounts required to play. Movies then face off head-to-head and everyone votes until one winner remains: that's what the group watches.
