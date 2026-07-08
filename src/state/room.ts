@@ -314,6 +314,14 @@ function clampLobbySeconds(seconds: number): number {
   return Math.min(600, Math.max(15, Math.round(seconds)));
 }
 
+function normalizeName(raw: string | undefined, fallback: string, max = 24): string {
+  const cleaned = (raw ?? "")
+    .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned.slice(0, max).trim() || fallback;
+}
+
 export async function createRoom(opts: CreateOptions): Promise<string> {
   clearSim();
   detachLive();
@@ -321,7 +329,7 @@ export async function createRoom(opts: CreateOptions): Promise<string> {
   const uid = await ensureAuth();
   const code = await reserveCode();
   const endsAt = Date.now() + clampLobbySeconds(opts.lobbySeconds ?? LOBBY_SECONDS) * 1000;
-  const name = opts.youName?.trim() || "You";
+  const name = normalizeName(opts.youName, "You");
 
   kind = "live";
   myUid = uid;
@@ -329,7 +337,7 @@ export async function createRoom(opts: CreateOptions): Promise<string> {
 
   const record: RoomDoc = {
     code,
-    name: opts.name?.trim() || "Movie Night",
+    name: normalizeName(opts.name, "Movie Night", 40),
     mode: opts.mode ?? "bracket",
     source: opts.source ?? "players",
     anonymous: opts.anonymous ?? false,
@@ -367,21 +375,27 @@ export async function joinRoom(code: string, name: string): Promise<void> {
   const uid = await ensureAuth();
   const upper = code.toUpperCase();
 
+  const snap = await getDoc(doc(db, "rooms", upper));
+  const room = (snap.data() as RoomDoc | undefined) ?? null;
+  if (!snap.exists() || !room || room.status !== "lobby") {
+    throw new Error("room-unavailable");
+  }
+
   kind = "live";
   myUid = uid;
   liveCode = upper;
 
   setSelection([]);
 
+  const cleanName = normalizeName(name, "Player");
   await setDoc(doc(db, "rooms", upper, "players", uid), {
     id: uid,
-    name: name.trim() || "Player",
+    name: cleanName,
     joinedAt: serverTimestamp(),
   });
 
-  const snap = await getDoc(doc(db, "rooms", upper));
-  roomDoc = (snap.data() as RoomDoc | undefined) ?? null;
-  playerDocs = [{ id: uid, name: name.trim() || "Player" }];
+  roomDoc = room;
+  playerDocs = [{ id: uid, name: cleanName }];
   poolDocs = [];
   rebuildLive();
 
@@ -520,14 +534,16 @@ export function playerName(id: string): string {
 
 export function setMyName(name: string) {
   if (kind === "live" && liveCode && myUid) {
-    updateDoc(doc(db, "rooms", liveCode, "players", myUid), { name }).catch(
-      () => {},
-    );
+    updateDoc(doc(db, "rooms", liveCode, "players", myUid), {
+      name: normalizeName(name, "Player"),
+    }).catch(() => {});
     return;
   }
   patch((s) => ({
     ...s,
-    players: s.players.map((p) => (p.isYou ? { ...p, name } : p)),
+    players: s.players.map((p) =>
+      p.isYou ? { ...p, name: normalizeName(name, "Player") } : p,
+    ),
   }));
 }
 

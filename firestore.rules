@@ -1,0 +1,100 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function roomData(code) {
+      return get(/databases/$(database)/documents/rooms/$(code)).data;
+    }
+
+    function roomIsLobby(code) {
+      return exists(/databases/$(database)/documents/rooms/$(code))
+        && roomData(code).status == 'lobby';
+    }
+
+    function validName(name, max) {
+      return name is string && name.size() >= 1 && name.size() <= max;
+    }
+
+    match /rooms/{code} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.resource.data.hostId == request.auth.uid
+        && request.resource.data.status == 'lobby'
+        && request.resource.data.code == code
+        && code.size() == 5
+        && validName(request.resource.data.name, 40)
+        && request.resource.data.mode in ['bracket', 'koth']
+        && request.resource.data.source in ['players', 'host']
+        && request.resource.data.anonymous is bool
+        && request.resource.data.perPlayer is int
+        && request.resource.data.perPlayer >= 1
+        && request.resource.data.perPlayer <= 10
+        && request.resource.data.endsAt is number;
+
+      allow update: if signedIn()
+        && request.auth.uid == resource.data.hostId
+        && request.resource.data.hostId == resource.data.hostId
+        && request.resource.data.code == resource.data.code;
+
+      allow delete: if signedIn()
+        && request.auth.uid == resource.data.hostId;
+
+      match /players/{uid} {
+        allow read: if signedIn();
+
+        allow create: if signedIn()
+          && request.auth.uid == uid
+          && request.resource.data.id == uid
+          && validName(request.resource.data.name, 24)
+          && roomIsLobby(code);
+
+        allow update: if signedIn()
+          && request.auth.uid == uid
+          && request.resource.data.id == uid
+          && validName(request.resource.data.name, 24);
+
+        allow delete: if signedIn()
+          && (request.auth.uid == uid || request.auth.uid == roomData(code).hostId);
+      }
+
+      match /pool/{uid} {
+        allow read: if signedIn();
+
+        allow create, update: if signedIn()
+          && request.auth.uid == uid
+          && request.resource.data.addedBy == uid
+          && request.resource.data.movies is list
+          && request.resource.data.movies.size() >= 1
+          && request.resource.data.movies.size() <= 40;
+
+        allow delete: if signedIn()
+          && (request.auth.uid == uid || request.auth.uid == roomData(code).hostId);
+      }
+
+      match /votes/{voteId} {
+        allow read: if signedIn();
+
+        allow create, update: if signedIn()
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.step is int
+          && request.resource.data.step >= 0
+          && request.resource.data.choice in ['left', 'right']
+          && voteId == string(request.resource.data.step) + '__' + request.auth.uid
+          && roomData(code).status == 'started';
+
+        allow delete: if signedIn()
+          && request.auth.uid == roomData(code).hostId;
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

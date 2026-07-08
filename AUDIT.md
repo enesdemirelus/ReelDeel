@@ -35,21 +35,29 @@ Key structural facts:
 ## Cluster 1 — Firestore security rules
 
 **Why a cluster:** one deployed rules file resolves four findings at once. **Release blocker.**
-**Cluster status:** OPEN
+**Cluster status:** DONE — rules deployed to `reelduel-enes` 2026-07-08, verified (unauthenticated REST read returns PERMISSION_DENIED)
 
-- [ ] **1.1 (CRITICAL) Database is world read/write — no rules exist.**
+Notes from the fix (2026-07-08):
+- `firestore.rules` + `firebase.json` created at repo root. Rules make `hostId` immutable on room updates — **cluster 3 host-failover will need to relax that** (allow hostId reassignment under defined conditions).
+- Side benefit for 2.2: rules split create/update, so a colliding `setDoc` on an existing room is now a denied update instead of a silent clobber (root cause still open in cluster 2).
+
+- [x] **1.1 (CRITICAL) Database is world read/write — no rules exist.**
+  Fixed: 2026-07-08 — authored `firestore.rules` (auth required everywhere; per-uid write scoping on players/pool; vote doc id must be `{step}__{auth.uid}`; default deny) + `firebase.json`. Deployed 2026-07-08.
   `FIREBASE_SETUP.md:51` confirms test mode; no `firestore.rules` / `firebase.json` in repo. Firebase web config ships in the bundle (`EXPO_PUBLIC_*`, `src/lib/firebase.ts:6-13`), so anyone can extract it and read every room (nicknames + picks) or overwrite any document.
   **Fix:** author + deploy `firestore.rules`; require `request.auth != null` everywhere; writes to `rooms/{code}/players/{uid}` and `pool/{uid}` only when `request.auth.uid == uid`; votes `{step}__{uid}` only when the uid suffix matches `request.auth.uid`. Commit `firestore.rules` + `firebase.json` to the repo.
 
-- [ ] **1.2 (CRITICAL) Host authority is client-side only.**
+- [x] **1.2 (CRITICAL) Host authority is client-side only.**
+  Fixed: 2026-07-08 — rules restrict room-doc update/delete (game/status/results/step live on the room doc) to `request.auth.uid == resource.data.hostId`; `hostId`/`code` immutable. Deployed 2026-07-08.
   `src/state/room.ts:571-579` — `startGame` / `openMatch` / `resolveCurrent` / `advanceAfterReveal` gate on local `roomDoc.hostId === myUid`. The writes carry no server-side authorization: any participant can override winners, jump `game.step`, end the game.
   **Fix:** rules restricting `game` / `status` / results writes on `rooms/{code}` to `request.auth.uid == resource.data.hostId`. `isHostLive()` stays as UI gating only.
 
-- [ ] **1.3 (LOW) Nickname limits are client-only.**
+- [x] **1.3 (LOW) Nickname limits are client-only.**
+  Fixed: 2026-07-08 — rules validate player `name` (string, 1..24) and room `name` (1..40); client `normalizeName()` added in `room.ts` (strips control/zero-width/bidi chars, collapses whitespace, caps length) and applied in `createRoom`, `joinRoom`, `setMyName`. Deployed 2026-07-08.
   `username.tsx:98` `maxLength=20` + trim in `room.ts:379/523` — nothing server-side. Scripted client can write zalgo / RTL / spoofed / huge names rendered on every roster.
   **Fix:** rules validate name (`string`, size 1..24); also normalize in `joinRoom`/`setMyName` (strip control chars, collapse whitespace).
 
-- [ ] **1.4 (MEDIUM) `joinRoom` writes player doc before/without validating room.**
+- [x] **1.4 (MEDIUM) `joinRoom` writes player doc before/without validating room.**
+  Fixed: 2026-07-08 — `joinRoom` now does `getDoc` first and throws `Error("room-unavailable")` if the room is missing or `status !== 'lobby'`, before touching module state or writing the player doc; rules additionally gate player-doc create on parent room existing with status `'lobby'`. Deployed 2026-07-08. (Callers don't yet surface the thrown error — that's 4.2.)
   `src/state/room.ts:363-389` — `setDoc` on `players/{uid}` at :376 happens before the `getDoc` at :382; no existence/status check. Clients can create orphan subcollections under arbitrary codes and join started rooms.
   **Fix:** `getDoc` first, throw if missing or `status !== 'lobby'`; enforce same in rules (player-doc create only when parent room exists and status == 'lobby'). Overlaps with 5.3.
 
@@ -125,7 +133,8 @@ Key structural facts:
   `lobby.tsx:104-109` — HoldButton `onStart` + LobbyTimer `onExpire` can both fire before the snapshot round-trips; guard `roomDoc?.game` (`room.ts:583`) reads the stale local cache. `buildGame()` uses `Math.random()`, so the second write is a DIFFERENT bracket → torn state across devices.
   **Fix:** synchronous in-flight flag before `updateDoc` + transaction that only sets `game` if server doc still has `game == null`; disable HoldButton after `onExpire`.
 
-- [ ] **5.3 (MEDIUM) Join-after-start TOCTOU.**
+- [~] **5.3 (MEDIUM) Join-after-start TOCTOU.**
+  Fixed: 2026-07-08 (partially, via 1.4) — `joinRoom` re-checks room status and throws if started; rules enforce lobby-only player creates. Remaining: username screen must catch and display the error (4.2) — mark `[x]` when that lands.
   `room.ts:363` — `roomExists` (used at join-screen time) rejects started rooms, but `joinRoom` re-checks nothing; host can start while the player types a name. Late joiner lands in an in-progress game, isn't in the bracket (seeds frozen at startGame), yet `castVote` accepts their votes.
   **Fix:** in `joinRoom`, `getDoc` first, throw if `status !== 'lobby'`; surface on username screen (pairs with 4.2). Enforce in rules (pairs with 1.4).
 
