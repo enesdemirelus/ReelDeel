@@ -4,6 +4,7 @@ import {
   doc,
   getDoc,
   onSnapshot,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -123,13 +124,22 @@ function later(fn: () => void, ms: number) {
   simTimers.push(setTimeout(fn, ms));
 }
 
-let codeSeed = 7;
 function makeCode(): string {
   const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const bytes = new Uint32Array(5);
+  const cryptoObj = (
+    globalThis as { crypto?: { getRandomValues?: (array: Uint32Array) => Uint32Array } }
+  ).crypto;
+  if (cryptoObj?.getRandomValues) {
+    cryptoObj.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i++) {
+      bytes[i] = Math.floor(Math.random() * 0x100000000);
+    }
+  }
   let out = "";
-  for (let i = 0; i < 5; i++) {
-    codeSeed = (codeSeed * 48271) % 0x7fffffff;
-    out += alphabet[codeSeed % alphabet.length];
+  for (let i = 0; i < bytes.length; i++) {
+    out += alphabet[bytes[i] % alphabet.length];
   }
   return out;
 }
@@ -283,15 +293,6 @@ function attachLive(code: string) {
   );
 }
 
-async function reserveCode(): Promise<string> {
-  for (let i = 0; i < 8; i++) {
-    const candidate = makeCode();
-    const snap = await getDoc(doc(db, "rooms", candidate));
-    if (!snap.exists()) return candidate;
-  }
-  return makeCode();
-}
-
 export async function roomExists(code: string): Promise<boolean> {
   const snap = await getDoc(doc(db, "rooms", code.toUpperCase()));
   if (!snap.exists()) return false;
@@ -327,25 +328,42 @@ export async function createRoom(opts: CreateOptions): Promise<string> {
   detachLive();
 
   const uid = await ensureAuth();
-  const code = await reserveCode();
   const endsAt = Date.now() + clampLobbySeconds(opts.lobbySeconds ?? LOBBY_SECONDS) * 1000;
   const name = normalizeName(opts.youName, "You");
 
-  kind = "live";
-  myUid = uid;
-  liveCode = code;
-
-  const record: RoomDoc = {
-    code,
+  const base = {
     name: normalizeName(opts.name, "Movie Night", 40),
     mode: opts.mode ?? "bracket",
     source: opts.source ?? "players",
     anonymous: opts.anonymous ?? false,
     perPlayer: opts.perPlayer ?? 3,
     hostId: uid,
-    status: "lobby",
+    status: "lobby" as const,
     endsAt,
   };
+
+  let record: RoomDoc | null = null;
+  for (let attempt = 0; attempt < 8 && !record; attempt++) {
+    const candidate = makeCode();
+    const created = await runTransaction(db, async (tx) => {
+      const ref = doc(db, "rooms", candidate);
+      const snap = await tx.get(ref);
+      if (snap.exists()) return false;
+      tx.set(ref, { ...base, code: candidate, createdAt: serverTimestamp() });
+      tx.set(doc(db, "rooms", candidate, "players", uid), {
+        id: uid,
+        name,
+        joinedAt: serverTimestamp(),
+      });
+      return true;
+    });
+    if (created) record = { ...base, code: candidate };
+  }
+  if (!record) throw new Error("code-unavailable");
+
+  kind = "live";
+  myUid = uid;
+  liveCode = record.code;
 
   setSelection(opts.seedPool ?? []);
 
@@ -354,18 +372,8 @@ export async function createRoom(opts: CreateOptions): Promise<string> {
   poolDocs = [];
   rebuildLive();
 
-  await setDoc(doc(db, "rooms", code), {
-    ...record,
-    createdAt: serverTimestamp(),
-  });
-  await setDoc(doc(db, "rooms", code, "players", uid), {
-    id: uid,
-    name,
-    joinedAt: serverTimestamp(),
-  });
-
-  attachLive(code);
-  return code;
+  attachLive(record.code);
+  return record.code;
 }
 
 export async function joinRoom(code: string, name: string): Promise<void> {

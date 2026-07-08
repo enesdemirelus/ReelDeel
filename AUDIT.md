@@ -66,13 +66,15 @@ Notes from the fix (2026-07-08):
 ## Cluster 2 — Room code generation
 
 **Why a cluster:** one function (`makeCode`/`reserveCode`) causes predictability AND silent room clobbering (data loss). Three finders independently confirmed it.
-**Cluster status:** OPEN
+**Cluster status:** DONE
 
-- [ ] **2.1 (HIGH) Codes are deterministic — LCG seeded `codeSeed = 7`, resets every launch.**
+- [x] **2.1 (HIGH) Codes are deterministic — LCG seeded `codeSeed = 7`, resets every launch.**
+  Fixed: 2026-07-08 — `makeCode()` now uses `crypto.getRandomValues` (Expo WinterCG global) with a `Math.random` fallback; LCG and `codeSeed` deleted.
   `src/state/room.ts:126-135` — Park-Miller LCG, module-level seed constant. First code after any cold start is identical on every install; whole sequence predictable from source. Guessable (join/grief any room; `roomExists` at :295 is an oracle).
   **Fix:** seed from crypto (`expo-crypto` / `crypto.getRandomValues`), not a constant.
 
-- [ ] **2.2 (HIGH) `reserveCode` is non-transactional check-then-set — collisions silently overwrite live rooms.**
+- [x] **2.2 (HIGH) `reserveCode` is non-transactional check-then-set — collisions silently overwrite live rooms.**
+  Fixed: 2026-07-08 — `reserveCode` deleted; `createRoom` now claims the code inside `runTransaction` (get → exists? retry new code (8 attempts, then throws `code-unavailable`) : atomically set room doc + host player doc). Rules' `roomIsLobby` switched to `existsAfter`/`getAfter` so the same-transaction player doc validates; rules redeployed 2026-07-08. Rules also deny non-host updates to an existing room, so clobbering is blocked server-side too.
   `room.ts:286-293` loops `getDoc()`, then `createRoom` does plain `setDoc` (:349). Two cold-started devices pick the same code, both see it free, second `setDoc` clobbers the first host's room — its players now point at a different game.
   **Fix:** `runTransaction` (or create-only precondition) so a losing writer detects the collision and retries a new code.
 
@@ -114,7 +116,8 @@ Notes from the fix (2026-07-08):
   `room.ts` — createRoom, joinRoom (:376), syncMyMovies (:395/397), setMyName (:523), startGame (:585), castVote (:599), openMatch (:610), resolveCurrent (:642), advanceAfterReveal (:663-682), leaveRoom (:691-692). A failed resolve/advance write is never retried (host effect only re-fires on a new snapshot) → game hangs silently.
   **Fix:** await critical writes (start/resolve/advance) with retry independent of incoming snapshots; expose an error/retry state on RoomState.
 
-- [ ] **4.4 (MEDIUM) `createRoom` commits local live state before Firestore writes succeed.**
+- [~] **4.4 (MEDIUM) `createRoom` commits local live state before Firestore writes succeed.**
+  Fixed: 2026-07-08 (state-ordering half, via cluster 2 rewrite) — `createRoom` mutates no module state until the transaction succeeds; on failure it throws with the singleton untouched. Remaining: `onCreate` in create.tsx still lacks a catch/error UI — that's 4.1; mark `[x]` when it lands.
   `room.ts:344-357` — flips `kind='live'`, sets docs, calls `rebuildLive()` BEFORE awaiting the two `setDoc`s. On rejection the singleton believes it's in a live room while nothing exists server-side.
   **Fix:** await (batched) writes first, then commit local state; reset `kind`/`liveCode`/`myUid` on failure.
 

@@ -12,8 +12,8 @@ service cloud.firestore {
     }
 
     function roomIsLobby(code) {
-      return exists(/databases/$(database)/documents/rooms/$(code))
-        && roomData(code).status == 'lobby';
+      return existsAfter(/databases/$(database)/documents/rooms/$(code))
+        && getAfter(/databases/$(database)/documents/rooms/$(code)).data.status == 'lobby';
     }
 
     function validName(name, max) {
