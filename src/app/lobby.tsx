@@ -68,7 +68,9 @@ export default function Lobby() {
   const host = players.find((p) => p.isHost);
 
   const mine: PoolMovie[] = selection.map((m) => ({ ...m, addedBy: youId }));
-  const movies: PoolMovie[] = [...pool, ...mine];
+  const movies: PoolMovie[] = [
+    ...new Map([...pool, ...mine].map((m) => [m.id, m])).values(),
+  ];
   const canAdd = isHost || config.source === "players";
   const enoughMovies = movies.length >= MIN_TO_START;
 

@@ -24,6 +24,7 @@ import {
   castVote,
   openMatch,
   REVEAL_MS,
+  RESOLVE_GRACE_MS,
   resolveCurrent,
   useRoom,
 } from "@/state/room";
@@ -69,7 +70,7 @@ export function BracketGame({ pool, onExit }: { pool: Movie[]; onExit: () => voi
     }
     const t = setTimeout(
       () => resolveCurrent(),
-      Math.max(0, matchEndsAt - Date.now()),
+      Math.max(0, matchEndsAt + RESOLVE_GRACE_MS - Date.now()),
     );
     return () => clearTimeout(t);
   }, [isHost, started, gamePhase, sharedStep, sharedResolved, matchEndsAt, revealEndsAt]);

@@ -139,13 +139,15 @@ Notes from the fix (2026-07-08):
 ## Cluster 5 — Game correctness (start / votes / joins)
 
 **Why a cluster:** all live in `startGame` / `resolveCurrent` / `joinRoom`; small, related edits.
-**Cluster status:** OPEN
+**Cluster status:** DONE
 
-- [ ] **5.1 (HIGH) Duplicate movies (same TMDB id) never deduped — a movie can face itself.**
+- [x] **5.1 (HIGH) Duplicate movies (same TMDB id) never deduped — a movie can face itself.**
+  Fixed: 2026-07-08 — `startGameAttempt` dedupes by movie id (`new Map(movies.map(m => [m.id, m]))`) before `buildGame`; lobby.tsx pool merge dedupes the same way so the displayed count matches what the game will use.
   `lobby.tsx:71` — `const movies = [...pool, ...mine]`; dedup exists only within one device's own selection (`movie-selection.ts:29`). Two players adding the same popular movie is common; `buildBracket`/`buildKoth` (`game.ts:58-73`) seed it twice.
   **Fix:** in `startGame`/`buildGame`: `const unique = [...new Map(movies.map(m => [m.id, m])).values()]`. Consider deduping in `rebuildLive` pool merge so the lobby grid shows real distinct count.
 
-- [ ] **5.2 (LOW) `startGame` double-invocation builds two different games.**
+- [x] **5.2 (LOW) `startGame` double-invocation builds two different games.**
+  Fixed: 2026-07-08 — synchronous `startingGame` module flag blocks re-entry before any async work, and the write moved into `runTransaction` that aborts if the server doc already has `game != null` — double-fire (hold + timer expiry) can commit at most one game.
   `lobby.tsx:104-109` — HoldButton `onStart` + LobbyTimer `onExpire` can both fire before the snapshot round-trips; guard `roomDoc?.game` (`room.ts:583`) reads the stale local cache. `buildGame()` uses `Math.random()`, so the second write is a DIFFERENT bracket → torn state across devices.
   **Fix:** synchronous in-flight flag before `updateDoc` + transaction that only sets `game` if server doc still has `game == null`; disable HoldButton after `onExpire`.
 
@@ -154,7 +156,8 @@ Notes from the fix (2026-07-08):
   `room.ts:363` — `roomExists` (used at join-screen time) rejects started rooms, but `joinRoom` re-checks nothing; host can start while the player types a name. Late joiner lands in an in-progress game, isn't in the bracket (seeds frozen at startGame), yet `castVote` accepts their votes.
   **Fix:** in `joinRoom`, `getDoc` first, throw if `status !== 'lobby'`; surface on username screen (pairs with 4.2). Enforce in rules (pairs with 1.4).
 
-- [ ] **5.4 (MEDIUM) Last-moment votes silently dropped.**
+- [x] **5.4 (MEDIUM) Last-moment votes silently dropped.**
+  Fixed: 2026-07-08 — host driver now schedules resolve at `matchEndsAt + RESOLVE_GRACE_MS` (750ms, exported from room.ts) so in-flight taps land; `resolveAttempt` tallies from a fresh `getDocs` of the votes subcollection (`freshVoteCounts`) instead of the host's cached listener snapshot, with a post-await guard re-check before writing. `currentCounts` deleted as dead code.
   `room.ts:628,637` — host resolves at `matchEndsAt` from `currentCounts(g)`, which reads the host's last-received votes snapshot, not a fresh read. A vote written in the final ~hundreds of ms persists in Firestore but is never counted.
   **Fix:** resolve at `matchEndsAt + ~750ms` grace and/or fresh `getDocs` of votes inside `resolveCurrent`; show a "locking votes" state so late taps are visibly rejected.
 

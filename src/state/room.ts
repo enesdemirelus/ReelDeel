@@ -3,6 +3,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   runTransaction,
   serverTimestamp,
@@ -87,6 +88,7 @@ const HEARTBEAT_MS = 5000;
 const HOST_STALE_MS = 20000;
 const WRITE_RETRIES = 3;
 const RETRY_MS = 1500;
+export const RESOLVE_GRACE_MS = 750;
 const YOU_HOST_ID = "you-host";
 const YOU_PLAYER_ID = "you-player";
 
@@ -309,18 +311,6 @@ function rebuildLive() {
     game: deriveGame(roomDoc.game ?? null, youId),
   });
   syncHostTimers();
-}
-
-function currentCounts(g: StoredGame): { left: number; right: number } {
-  const seen: Record<string, Winner> = {};
-  for (const v of voteDocs) if (v.step === g.step) seen[v.uid] = v.choice;
-  let left = 0;
-  let right = 0;
-  for (const c of Object.values(seen)) {
-    if (c === "left") left++;
-    else right++;
-  }
-  return { left, right };
 }
 
 function deriveGame(g: StoredGame | null, youId: string): GameState | null {
@@ -704,12 +694,27 @@ export function startGame(movies: Movie[]) {
   patch((s) => ({ ...s, started: true }));
 }
 
+let startingGame = false;
+
 function startGameAttempt(movies: Movie[], attempt: number) {
-  if (!isHostLive() || !liveCode || roomDoc?.game) return;
-  const game = buildGame(roomDoc!.mode, movies);
-  updateDoc(doc(db, "rooms", liveCode), { status: "started", game }).catch(() => {
-    scheduleRetry(attempt, () => startGameAttempt(movies, attempt + 1), "startGame");
-  });
+  if (!isHostLive() || !liveCode || roomDoc?.game || startingGame) return;
+  startingGame = true;
+  const unique = [...new Map(movies.map((m) => [m.id, m])).values()];
+  const game = buildGame(roomDoc!.mode, unique);
+  const code = liveCode;
+  runTransaction(db, async (tx) => {
+    const snap = await tx.get(doc(db, "rooms", code));
+    const data = snap.data() as RoomDoc | undefined;
+    if (!data || data.game) return;
+    tx.update(doc(db, "rooms", code), { status: "started", game });
+  })
+    .then(() => {
+      startingGame = false;
+    })
+    .catch(() => {
+      startingGame = false;
+      scheduleRetry(attempt, () => startGameAttempt(movies, attempt + 1), "startGame");
+    });
 }
 
 export function castVote(choice: Winner) {
@@ -747,12 +752,30 @@ function openMatchAttempt(step: number, attempt: number) {
   });
 }
 
-export function resolveCurrent() {
-  if (!roomDoc?.game) return;
-  resolveAttempt(roomDoc.game.step, 0);
+async function freshVoteCounts(step: number): Promise<{ left: number; right: number }> {
+  if (liveCode) {
+    try {
+      const qs = await getDocs(collection(db, "rooms", liveCode, "votes"));
+      voteDocs = qs.docs.map((d) => d.data() as VoteDoc);
+    } catch {}
+  }
+  const seen: Record<string, Winner> = {};
+  for (const v of voteDocs) if (v.step === step) seen[v.uid] = v.choice;
+  let left = 0;
+  let right = 0;
+  for (const c of Object.values(seen)) {
+    if (c === "left") left++;
+    else right++;
+  }
+  return { left, right };
 }
 
-function resolveAttempt(step: number, attempt: number) {
+export function resolveCurrent() {
+  if (!roomDoc?.game) return;
+  void resolveAttempt(roomDoc.game.step, 0);
+}
+
+async function resolveAttempt(step: number, attempt: number) {
   if (!isHostLive() || !roomDoc?.game || !liveCode) return;
   const g = roomDoc.game;
   if (g.phase !== "playing" || g.step !== step || g.results[step] != null) return;
@@ -764,7 +787,7 @@ function resolveAttempt(step: number, attempt: number) {
     if (isBye(duel)) {
       winner = byeWinner(duel);
     } else {
-      const counts = currentCounts(g);
+      const counts = await freshVoteCounts(step);
       winner =
         counts.left === counts.right
           ? Math.random() < 0.5
@@ -773,10 +796,22 @@ function resolveAttempt(step: number, attempt: number) {
           : tallyWinner(counts);
     }
   } else {
-    winner = tallyWinner(currentCounts(g));
+    winner = tallyWinner(await freshVoteCounts(step));
   }
 
-  const results = [...g.results];
+  const current = roomDoc?.game;
+  if (
+    !isHostLive() ||
+    !liveCode ||
+    !current ||
+    current.phase !== "playing" ||
+    current.step !== step ||
+    current.results[step] != null
+  ) {
+    return;
+  }
+
+  const results = [...current.results];
   results[step] = winner;
   updateDoc(doc(db, "rooms", liveCode), {
     "game.results": results,
