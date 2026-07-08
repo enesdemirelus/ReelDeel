@@ -8,6 +8,7 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  type Timestamp,
 } from "firebase/firestore";
 import { useSyncExternalStore } from "react";
 
@@ -58,6 +59,7 @@ export type StoredGame = {
   results: Winner[];
   step: number;
   matchEndsAt: number;
+  revealEndsAt?: number;
   phase: "playing" | "done";
 };
 
@@ -80,6 +82,9 @@ export type RoomState = {
 
 const LOBBY_SECONDS = 90;
 const VOTE_SECONDS = 10;
+export const REVEAL_MS = 1600;
+const HEARTBEAT_MS = 5000;
+const HOST_STALE_MS = 20000;
 const YOU_HOST_ID = "you-host";
 const YOU_PLAYER_ID = "you-player";
 
@@ -154,6 +159,7 @@ type RoomDoc = {
   hostId: string;
   status: "lobby" | "started";
   endsAt: number;
+  hostBeatAt?: Timestamp | null;
   game?: StoredGame | null;
 };
 
@@ -183,12 +189,83 @@ let poolDocs: PoolDoc[] = [];
 let voteDocs: VoteDoc[] = [];
 
 function detachLive() {
+  stopHostTimers();
   for (const u of unsubs) u();
   unsubs = [];
   roomDoc = null;
   playerDocs = [];
   poolDocs = [];
   voteDocs = [];
+}
+
+let beatTimer: ReturnType<typeof setInterval> | null = null;
+let watchTimer: ReturnType<typeof setInterval> | null = null;
+
+function stopHostTimers() {
+  if (beatTimer) {
+    clearInterval(beatTimer);
+    beatTimer = null;
+  }
+  if (watchTimer) {
+    clearInterval(watchTimer);
+    watchTimer = null;
+  }
+}
+
+function beat() {
+  if (!isHostLive() || !liveCode) return;
+  updateDoc(doc(db, "rooms", liveCode), { hostBeatAt: serverTimestamp() }).catch(
+    () => {},
+  );
+}
+
+async function maybeTakeover() {
+  if (kind !== "live" || !liveCode || !myUid || !roomDoc) return;
+  const currentBeat = roomDoc.hostBeatAt;
+  if (!currentBeat) return;
+  const hostId = roomDoc.hostId;
+  const eligible = [...playerDocs]
+    .filter((p) => p.id !== hostId)
+    .sort((a, b) => (a.joinedAt?.seconds ?? 0) - (b.joinedAt?.seconds ?? 0));
+  const rank = eligible.findIndex((p) => p.id === myUid);
+  if (rank < 0) return;
+  if (Date.now() - currentBeat.toMillis() < HOST_STALE_MS + rank * HEARTBEAT_MS) return;
+  const code = liveCode;
+  const uid = myUid;
+  try {
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(doc(db, "rooms", code));
+      const data = snap.data() as RoomDoc | undefined;
+      if (!data) return;
+      const b = data.hostBeatAt;
+      if (b && Date.now() - b.toMillis() < HOST_STALE_MS) return;
+      tx.update(doc(db, "rooms", code), {
+        hostId: uid,
+        hostBeatAt: serverTimestamp(),
+      });
+    });
+  } catch {}
+}
+
+function syncHostTimers() {
+  if (isHostLive()) {
+    if (watchTimer) {
+      clearInterval(watchTimer);
+      watchTimer = null;
+    }
+    if (!beatTimer) {
+      beat();
+      beatTimer = setInterval(beat, HEARTBEAT_MS);
+    }
+    return;
+  }
+  if (beatTimer) {
+    clearInterval(beatTimer);
+    beatTimer = null;
+  }
+  if (kind === "live" && roomDoc && !watchTimer) {
+    watchTimer = setInterval(maybeTakeover, HEARTBEAT_MS);
+  }
 }
 
 function rebuildLive() {
@@ -229,6 +306,7 @@ function rebuildLive() {
     started: roomDoc.status === "started",
     game: deriveGame(roomDoc.game ?? null, youId),
   });
+  syncHostTimers();
 }
 
 function currentCounts(g: StoredGame): { left: number; right: number } {
@@ -349,7 +427,12 @@ export async function createRoom(opts: CreateOptions): Promise<string> {
       const ref = doc(db, "rooms", candidate);
       const snap = await tx.get(ref);
       if (snap.exists()) return false;
-      tx.set(ref, { ...base, code: candidate, createdAt: serverTimestamp() });
+      tx.set(ref, {
+        ...base,
+        code: candidate,
+        createdAt: serverTimestamp(),
+        hostBeatAt: serverTimestamp(),
+      });
       tx.set(doc(db, "rooms", candidate, "players", uid), {
         id: uid,
         name,
@@ -663,9 +746,10 @@ export function resolveCurrent() {
 
   const results = [...g.results];
   results[step] = winner;
-  updateDoc(doc(db, "rooms", liveCode), { "game.results": results }).catch(
-    () => {},
-  );
+  updateDoc(doc(db, "rooms", liveCode), {
+    "game.results": results,
+    "game.revealEndsAt": Date.now() + REVEAL_MS,
+  }).catch(() => {});
 }
 
 export function advanceAfterReveal() {

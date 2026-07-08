@@ -35,12 +35,21 @@ service cloud.firestore {
         && request.resource.data.perPlayer is int
         && request.resource.data.perPlayer >= 1
         && request.resource.data.perPlayer <= 10
-        && request.resource.data.endsAt is number;
+        && request.resource.data.endsAt is number
+        && request.resource.data.hostBeatAt == request.time;
 
       allow update: if signedIn()
-        && request.auth.uid == resource.data.hostId
-        && request.resource.data.hostId == resource.data.hostId
-        && request.resource.data.code == resource.data.code;
+        && request.resource.data.code == resource.data.code
+        && (
+          (request.auth.uid == resource.data.hostId
+            && request.resource.data.hostId == resource.data.hostId)
+          || (request.resource.data.hostId == request.auth.uid
+            && exists(/databases/$(database)/documents/rooms/$(code)/players/$(request.auth.uid))
+            && resource.data.hostBeatAt is timestamp
+            && request.time.toMillis() > resource.data.hostBeatAt.toMillis() + 15000
+            && request.resource.data.hostBeatAt == request.time
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hostId', 'hostBeatAt']))
+        );
 
       allow delete: if signedIn()
         && request.auth.uid == resource.data.hostId;

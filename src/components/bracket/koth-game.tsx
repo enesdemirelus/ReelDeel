@@ -21,6 +21,7 @@ import {
   advanceAfterReveal,
   castVote,
   openMatch,
+  REVEAL_MS,
   resolveCurrent,
   useRoom,
 } from "@/state/room";
@@ -29,7 +30,6 @@ type Phase = "seeding" | "intro" | "focus" | "voting" | "advance" | "done";
 
 const INTRO_MS = 1300;
 const FOCUS_MS = 760;
-const REVEAL_MS = 1600;
 const ADVANCE_MS = 1400;
 
 export function KothGame({ pool, onExit }: { pool: Movie[]; onExit: () => void }) {
@@ -46,25 +46,31 @@ export function KothGame({ pool, onExit }: { pool: Movie[]; onExit: () => void }
   const sharedPhase = game?.phase ?? "playing";
   const started = phase !== "seeding" && phase !== "intro";
   const animResolved = game ? game.results[animStep] != null : false;
+  const gamePhase = game?.phase ?? null;
+  const sharedResolved = game ? game.results[game.step] != null : false;
+  const matchEndsAt = game?.matchEndsAt ?? 0;
+  const revealEndsAt = game?.revealEndsAt ?? 0;
 
   useEffect(() => {
-    if (!isHost || !game || game.phase !== "playing" || !started) return;
-    const step = game.step;
-    if (game.results[step] != null) {
-      const t = setTimeout(() => advanceAfterReveal(), REVEAL_MS);
+    if (!isHost || !started || gamePhase !== "playing") return;
+    if (sharedResolved) {
+      const t = setTimeout(
+        () => advanceAfterReveal(),
+        Math.max(0, revealEndsAt - Date.now()),
+      );
       return () => clearTimeout(t);
     }
-    if (openedRef.current !== step) {
-      openedRef.current = step;
+    if (openedRef.current !== sharedStep) {
+      openedRef.current = sharedStep;
       openMatch();
       return;
     }
     const t = setTimeout(
       () => resolveCurrent(),
-      Math.max(0, game.matchEndsAt - Date.now()),
+      Math.max(0, matchEndsAt - Date.now()),
     );
     return () => clearTimeout(t);
-  }, [isHost, game, started]);
+  }, [isHost, started, gamePhase, sharedStep, sharedResolved, matchEndsAt, revealEndsAt]);
 
   useEffect(() => {
     if (phase === "intro") {

@@ -38,7 +38,7 @@ Key structural facts:
 **Cluster status:** DONE — rules deployed to `reelduel-enes` 2026-07-08, verified (unauthenticated REST read returns PERMISSION_DENIED)
 
 Notes from the fix (2026-07-08):
-- `firestore.rules` + `firebase.json` created at repo root. Rules make `hostId` immutable on room updates — **cluster 3 host-failover will need to relax that** (allow hostId reassignment under defined conditions).
+- `firestore.rules` + `firebase.json` created at repo root. Rules originally made `hostId` immutable; cluster 3 (2026-07-08) added the sole exception — the heartbeat-stale takeover branch.
 - Side benefit for 2.2: rules split create/update, so a colliding `setDoc` on an existing room is now a denied update instead of a silent clobber (root cause still open in cluster 2).
 
 - [x] **1.1 (CRITICAL) Database is world read/write — no rules exist.**
@@ -83,17 +83,27 @@ Notes from the fix (2026-07-08):
 ## Cluster 3 — Host failover / game liveness
 
 **Why a cluster:** the host client is the sole game engine; anything that stops it strands every player.
-**Cluster status:** OPEN
+**Cluster status:** DONE
 
-- [ ] **3.1 (HIGH) Host disconnect/force-quit/background permanently stalls the game.**
+Notes from the fix (2026-07-08):
+- Room doc gained `hostBeatAt` (serverTimestamp). Host client refreshes it every 5s (`beat()`/`syncHostTimers()` in room.ts, driven from `rebuildLive`, cleared in `detachLive`).
+- Non-host clients run a watchdog every 5s: when `hostBeatAt` is stale (20s + rank*5s, rank = position among non-host players by `joinedAt`), the earliest eligible player self-promotes via `runTransaction` (`maybeTakeover()`). Rules takeover branch: claimer must have a player doc in the room, staleness proven against `request.time` (15s, server clock — client's 20s threshold means skew can't false-fire), and MapDiff restricts the write to exactly `hostId` + `hostBeatAt`.
+- The new host's `isHostLive()` flips true → driver effect re-runs → `openMatch()` re-opens the stalled step with a fresh vote window; game resumes automatically on every device.
+- `hostId` is no longer strictly immutable in rules — mutable ONLY via the takeover branch above. `StoredGame` gained optional `revealEndsAt`.
+- Rooms created before this change lack `hostBeatAt` — takeover is impossible for them (watchdog skips, rules deny); they behave as before.
+
+- [x] **3.1 (HIGH) Host disconnect/force-quit/background permanently stalls the game.**
+  Fixed: 2026-07-08 — heartbeat + staggered transactional host election, rules-enforced; see cluster notes above. Rules redeployed.
   `room.ts:571-579,606,615,647` + `bracket-game.tsx:52-69` (identical in `koth-game.tsx`) — only the host's effect schedules `resolveCurrent`/`advanceAfterReveal`. No heartbeat, timeout takeover, or re-election. Countdown expires on every device; nothing writes `game.results[step]`; frozen forever.
   **Fix:** host heartbeat timestamp on the room doc + deterministic re-election (earliest `joinedAt`) when stale; or allow any client to resolve a step whose `matchEndsAt` is > N s past. At minimum surface a "host left" state.
 
-- [ ] **3.2 (MEDIUM) Reveal→advance timer restarts from scratch on every snapshot.**
+- [x] **3.2 (MEDIUM) Reveal→advance timer restarts from scratch on every snapshot.**
+  Fixed: 2026-07-08 — `resolveCurrent` now writes `game.revealEndsAt = Date.now() + REVEAL_MS` atomically with the result; the driver effect schedules `advanceAfterReveal` at `max(0, revealEndsAt - Date.now())` instead of a relative delay, so snapshot churn no longer restarts the countdown. `REVEAL_MS` moved to room.ts (exported); both game components import it.
   `bracket-game.tsx:52-57,69` / `koth-game.tsx:53-55,67` — effect deps on the whole `game` object, which `deriveGame` rebuilds on EVERY snapshot of any of 4 listeners; when `results[step]` is set, each snapshot clears + recreates `setTimeout(advanceAfterReveal, REVEAL_MS)`, resetting the full delay. Churn during reveal delays or indefinitely postpones advancement.
   **Fix:** store absolute `revealEndsAt` in the game doc when the result is written; schedule at `max(0, revealEndsAt - Date.now())`. Or hold the deadline in a ref.
 
-- [ ] **3.3 (LOW) Host resolve-effect deps on whole `game` object — teardown per vote.**
+- [x] **3.3 (LOW) Host resolve-effect deps on whole `game` object — teardown per vote.**
+  Fixed: 2026-07-08 — driver effect in bracket-game.tsx and koth-game.tsx now depends on primitives (`isHost, started, gamePhase, sharedStep, sharedResolved, matchEndsAt, revealEndsAt`); incoming vote snapshots no longer tear down/recreate the timers.
   `bracket-game.tsx:69` / `koth-game.tsx:67` — effect re-runs on every incoming vote snapshot, recreating its timer. Not a correctness bug (matchEndsAt stable, cleanup correct), but wasteful and fragile.
   **Fix:** depend on stable primitives: `[isHost, started, game?.phase, game?.step, game?.matchEndsAt, ...]`. Related to 3.2 — fix together.
 
