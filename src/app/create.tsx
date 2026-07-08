@@ -147,6 +147,7 @@ export default function Create() {
   const [lobbySeconds, setLobbySeconds] = useState(60);
   const [anonymous, setAnonymous] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const movies = useMovieSelection();
 
   const headerZoneH = insets.top + 172;
@@ -198,6 +199,7 @@ export default function Create() {
     if (busy) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setBusy(true);
+    setError(null);
     try {
       await createRoom({
         name,
@@ -209,6 +211,9 @@ export default function Create() {
         seedPool: source === "host" ? movies : [],
       });
       router.push("/lobby");
+    } catch {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setError("Couldn't create the room. Check your connection and try again.");
     } finally {
       setBusy(false);
     }
@@ -444,6 +449,16 @@ export default function Create() {
                 { paddingBottom: insets.bottom + 16 },
               ]}
             >
+              {error ? (
+                <View style={styles.errorPill}>
+                  <SymbolView
+                    name="exclamationmark.triangle.fill"
+                    tintColor="#FF9B9B"
+                    size={14}
+                  />
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              ) : null}
               {ready && !busy ? (
                 <SpringButton onPress={onCreate} style={styles.signupButton}>
                   <Text style={styles.signupLabel}>Create Room</Text>
@@ -633,6 +648,25 @@ const styles = StyleSheet.create({
   warningText: {
     flex: 1,
     color: "#FFCBAE",
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 18,
+  },
+  errorPill: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,99,99,0.4)",
+    backgroundColor: "rgba(255,99,99,0.12)",
+  },
+  errorText: {
+    flex: 1,
+    color: "#FFB3B3",
     fontSize: 13,
     fontWeight: "600",
     lineHeight: 18,

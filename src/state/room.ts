@@ -85,6 +85,8 @@ const VOTE_SECONDS = 10;
 export const REVEAL_MS = 1600;
 const HEARTBEAT_MS = 5000;
 const HOST_STALE_MS = 20000;
+const WRITE_RETRIES = 3;
+const RETRY_MS = 1500;
 const YOU_HOST_ID = "you-host";
 const YOU_PLAYER_ID = "you-player";
 
@@ -685,45 +687,75 @@ function isHostLive(): boolean {
   );
 }
 
+function scheduleRetry(attempt: number, run: () => void, label: string) {
+  if (attempt < WRITE_RETRIES) {
+    setTimeout(run, RETRY_MS * (attempt + 1));
+  } else {
+    console.warn(`write failed after retries: ${label}`);
+  }
+}
+
 export function startGame(movies: Movie[]) {
   if (kind === "live" && liveCode) {
-    if (!isHostLive() || roomDoc?.game) return;
-    const game = buildGame(roomDoc!.mode, movies);
-    updateDoc(doc(db, "rooms", liveCode), { status: "started", game }).catch(
-      () => {},
-    );
+    startGameAttempt(movies, 0);
     return;
   }
   clearSim();
   patch((s) => ({ ...s, started: true }));
 }
 
+function startGameAttempt(movies: Movie[], attempt: number) {
+  if (!isHostLive() || !liveCode || roomDoc?.game) return;
+  const game = buildGame(roomDoc!.mode, movies);
+  updateDoc(doc(db, "rooms", liveCode), { status: "started", game }).catch(() => {
+    scheduleRetry(attempt, () => startGameAttempt(movies, attempt + 1), "startGame");
+  });
+}
+
 export function castVote(choice: Winner) {
+  if (kind !== "live" || !roomDoc?.game) return;
+  castVoteAttempt(choice, roomDoc.game.step, 0);
+}
+
+function castVoteAttempt(choice: Winner, step: number, attempt: number) {
   if (kind !== "live" || !liveCode || !myUid || !roomDoc?.game) return;
   const g = roomDoc.game;
-  if (g.phase !== "playing" || g.results[g.step] != null) return;
-  const step = g.step;
-  setDoc(doc(db, "rooms", liveCode, "votes", `${step}__${myUid}`), {
+  if (g.phase !== "playing" || g.step !== step || g.results[step] != null) return;
+  const uid = myUid;
+  setDoc(doc(db, "rooms", liveCode, "votes", `${step}__${uid}`), {
     step,
-    uid: myUid,
+    uid,
     choice,
-  }).catch(() => {});
+  }).catch(() => {
+    scheduleRetry(attempt, () => castVoteAttempt(choice, step, attempt + 1), "castVote");
+  });
 }
 
 export function openMatch() {
+  if (!roomDoc?.game) return;
+  openMatchAttempt(roomDoc.game.step, 0);
+}
+
+function openMatchAttempt(step: number, attempt: number) {
   if (!isHostLive() || !roomDoc?.game || !liveCode) return;
   const g = roomDoc.game;
-  if (g.phase !== "playing" || g.results[g.step] != null) return;
+  if (g.phase !== "playing" || g.step !== step || g.results[step] != null) return;
   updateDoc(doc(db, "rooms", liveCode), {
     "game.matchEndsAt": Date.now() + VOTE_SECONDS * 1000,
-  }).catch(() => {});
+  }).catch(() => {
+    scheduleRetry(attempt, () => openMatchAttempt(step, attempt + 1), "openMatch");
+  });
 }
 
 export function resolveCurrent() {
+  if (!roomDoc?.game) return;
+  resolveAttempt(roomDoc.game.step, 0);
+}
+
+function resolveAttempt(step: number, attempt: number) {
   if (!isHostLive() || !roomDoc?.game || !liveCode) return;
   const g = roomDoc.game;
-  if (g.phase !== "playing" || g.results[g.step] != null) return;
-  const step = g.step;
+  if (g.phase !== "playing" || g.step !== step || g.results[step] != null) return;
 
   let winner: Winner;
   if (g.mode === "bracket") {
@@ -749,14 +781,22 @@ export function resolveCurrent() {
   updateDoc(doc(db, "rooms", liveCode), {
     "game.results": results,
     "game.revealEndsAt": Date.now() + REVEAL_MS,
-  }).catch(() => {});
+  }).catch(() => {
+    scheduleRetry(attempt, () => resolveAttempt(step, attempt + 1), "resolveCurrent");
+  });
 }
 
 export function advanceAfterReveal() {
+  if (!roomDoc?.game) return;
+  advanceAttempt(roomDoc.game.step, 0);
+}
+
+function advanceAttempt(step: number, attempt: number) {
   if (!isHostLive() || !roomDoc?.game || !liveCode) return;
   const g = roomDoc.game;
-  if (g.phase !== "playing" || g.results[g.step] == null) return;
-  const step = g.step;
+  if (g.phase !== "playing" || g.step !== step || g.results[step] == null) return;
+  const retry = () =>
+    scheduleRetry(attempt, () => advanceAttempt(step, attempt + 1), "advanceAfterReveal");
 
   if (g.mode === "bracket") {
     const playlist = bracketPlaylist(g.bracketSize, g.roundCount);
@@ -771,25 +811,21 @@ export function advanceAfterReveal() {
       updateDoc(doc(db, "rooms", liveCode), {
         "game.results": next.results,
         "game.phase": "done",
-      }).catch(() => {});
+      }).catch(retry);
     } else {
       updateDoc(doc(db, "rooms", liveCode), {
         "game.results": next.results,
         "game.step": next.step,
-      }).catch(() => {});
+      }).catch(retry);
     }
     return;
   }
 
   const nextStep = step + 1;
   if (nextStep >= g.challenges) {
-    updateDoc(doc(db, "rooms", liveCode), { "game.phase": "done" }).catch(
-      () => {},
-    );
+    updateDoc(doc(db, "rooms", liveCode), { "game.phase": "done" }).catch(retry);
   } else {
-    updateDoc(doc(db, "rooms", liveCode), { "game.step": nextStep }).catch(
-      () => {},
-    );
+    updateDoc(doc(db, "rooms", liveCode), { "game.step": nextStep }).catch(retry);
   }
 }
 

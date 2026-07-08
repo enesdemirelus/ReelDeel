@@ -27,6 +27,7 @@ export default function Username() {
 
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const ready = name.trim().length > 0 && !!code;
 
@@ -39,9 +40,17 @@ export default function Username() {
     if (busy || !code) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setBusy(true);
+    setError(null);
     try {
       await joinRoom(code, name);
       router.replace("/lobby");
+    } catch (e) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setError(
+        e instanceof Error && e.message === "room-unavailable"
+          ? "This room is no longer accepting players. Double-check the code or ask the host for a new one."
+          : "Couldn't join the room. Check your connection and try again.",
+      );
     } finally {
       setBusy(false);
     }
@@ -109,6 +118,16 @@ export default function Username() {
           >
             <EdgeBlur edge="bottom" intensity={64} />
             <View style={[styles.footerInner, { paddingBottom: insets.bottom + 16 }]}>
+              {error ? (
+                <View style={styles.errorPill}>
+                  <SymbolView
+                    name="exclamationmark.triangle.fill"
+                    tintColor="#FF9B9B"
+                    size={14}
+                  />
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              ) : null}
               {ready && !busy ? (
                 <SpringButton onPress={onContinue} style={styles.signupButton}>
                   <Text style={styles.signupLabel}>Enter Lobby</Text>
@@ -236,5 +255,24 @@ const styles = StyleSheet.create({
     color: "#000000",
     fontSize: 15,
     letterSpacing: 0.1,
+  },
+  errorPill: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,99,99,0.4)",
+    backgroundColor: "rgba(255,99,99,0.12)",
+  },
+  errorText: {
+    flex: 1,
+    color: "#FFB3B3",
+    fontSize: 13,
+    fontWeight: "600",
+    lineHeight: 18,
   },
 });

@@ -112,22 +112,25 @@ Notes from the fix (2026-07-08):
 ## Cluster 4 — Error surfacing & write reliability
 
 **Why a cluster:** one shared error-state pattern (inline banner + awaited critical writes) fixes all four.
-**Cluster status:** OPEN
+**Cluster status:** DONE
 
-- [ ] **4.1 (HIGH) Room-creation failure is a silent dead end.**
+- [x] **4.1 (HIGH) Room-creation failure is a silent dead end.**
+  Fixed: 2026-07-08 — `onCreate` catches, fires error haptic, shows a red error pill (`errorPill` style) above the footer button; cleared on retry. Navigation only on success.
   `create.tsx:197-215` — `onCreate` awaits `createRoom()` in try/finally, no catch, no error UI. Failure (offline, auth swallowed at `_layout.tsx:32`) → button resets to "Create Room", user stranded, unhandled rejection.
   **Fix:** try/catch + error state + inline banner (reuse warning-pill style at `create.tsx:621`); navigate only on success.
 
-- [ ] **4.2 (HIGH) Join failure is the same silent dead end.**
+- [x] **4.2 (HIGH) Join failure is the same silent dead end.**
+  Fixed: 2026-07-08 — `onContinue` catches; `room-unavailable` (thrown by joinRoom since 1.4) gets a specific "no longer accepting players" message, anything else a network-retry message; same error pill UI as create.
   `username.tsx:38-48` — identical pattern around `joinRoom()`.
   **Fix:** same as 4.1.
 
-- [ ] **4.3 (MEDIUM) Every Firestore write swallows errors with `.catch(() => {})`.**
+- [x] **4.3 (MEDIUM) Every Firestore write swallows errors with `.catch(() => {})`.**
+  Fixed: 2026-07-08 — critical game writes (`startGame`, `castVote`, `openMatch`, `resolveCurrent`, `advanceAfterReveal`) now retry via `scheduleRetry` (3 attempts, linear backoff, `console.warn` on exhaustion). Each function splits into a public wrapper + `*Attempt(step, attempt)` that captures `step` at first call and re-checks `g.step !== step` / result / `isHostLive()` guards, so stale retries after the game advances or host changes are no-ops. Low-stakes writes (`syncMyMovies`, `setMyName`, `leaveRoom`) intentionally stay fire-and-forget.
   `room.ts` — createRoom, joinRoom (:376), syncMyMovies (:395/397), setMyName (:523), startGame (:585), castVote (:599), openMatch (:610), resolveCurrent (:642), advanceAfterReveal (:663-682), leaveRoom (:691-692). A failed resolve/advance write is never retried (host effect only re-fires on a new snapshot) → game hangs silently.
   **Fix:** await critical writes (start/resolve/advance) with retry independent of incoming snapshots; expose an error/retry state on RoomState.
 
-- [~] **4.4 (MEDIUM) `createRoom` commits local live state before Firestore writes succeed.**
-  Fixed: 2026-07-08 (state-ordering half, via cluster 2 rewrite) — `createRoom` mutates no module state until the transaction succeeds; on failure it throws with the singleton untouched. Remaining: `onCreate` in create.tsx still lacks a catch/error UI — that's 4.1; mark `[x]` when it lands.
+- [x] **4.4 (MEDIUM) `createRoom` commits local live state before Firestore writes succeed.**
+  Fixed: 2026-07-08 — state-ordering fixed in cluster 2 (`createRoom` mutates nothing until the transaction succeeds); error surfacing landed with 4.1.
   `room.ts:344-357` — flips `kind='live'`, sets docs, calls `rebuildLive()` BEFORE awaiting the two `setDoc`s. On rejection the singleton believes it's in a live room while nothing exists server-side.
   **Fix:** await (batched) writes first, then commit local state; reset `kind`/`liveCode`/`myUid` on failure.
 
@@ -146,8 +149,8 @@ Notes from the fix (2026-07-08):
   `lobby.tsx:104-109` — HoldButton `onStart` + LobbyTimer `onExpire` can both fire before the snapshot round-trips; guard `roomDoc?.game` (`room.ts:583`) reads the stale local cache. `buildGame()` uses `Math.random()`, so the second write is a DIFFERENT bracket → torn state across devices.
   **Fix:** synchronous in-flight flag before `updateDoc` + transaction that only sets `game` if server doc still has `game == null`; disable HoldButton after `onExpire`.
 
-- [~] **5.3 (MEDIUM) Join-after-start TOCTOU.**
-  Fixed: 2026-07-08 (partially, via 1.4) — `joinRoom` re-checks room status and throws if started; rules enforce lobby-only player creates. Remaining: username screen must catch and display the error (4.2) — mark `[x]` when that lands.
+- [x] **5.3 (MEDIUM) Join-after-start TOCTOU.**
+  Fixed: 2026-07-08 — `joinRoom` re-checks status and throws (1.4); rules enforce lobby-only player creates; username screen now catches and shows the "no longer accepting players" message (4.2).
   `room.ts:363` — `roomExists` (used at join-screen time) rejects started rooms, but `joinRoom` re-checks nothing; host can start while the player types a name. Late joiner lands in an in-progress game, isn't in the bracket (seeds frozen at startGame), yet `castVote` accepts their votes.
   **Fix:** in `joinRoom`, `getDoc` first, throw if `status !== 'lobby'`; surface on username screen (pairs with 4.2). Enforce in rules (pairs with 1.4).
 
